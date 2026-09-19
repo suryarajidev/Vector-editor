@@ -407,6 +407,9 @@ function initializeEditor() {
   const unevenButton = document.querySelector("#node-type-uneven");
   const pointerToolButton = document.querySelector("#tool-pointer");
   const nodeToolButton = document.querySelector("#tool-node");
+  const addNodeButton = document.querySelector("#tool-add-node");
+  const deselectButton = document.querySelector("#deselect-nodes");
+  const deleteButton = document.querySelector("#delete-node");
   const toolName = document.querySelector("#tool-name");
   const toolDescription = document.querySelector("#tool-description");
   const toolStatus = document.querySelector("#tool-status");
@@ -458,6 +461,13 @@ function initializeEditor() {
     if (focus) {
       nodeLayer.querySelector(`[data-node-index="${selectedIndex}"]`)?.focus();
     }
+  }
+
+  function deselectAllNodes({ announceChange = false } = {}) {
+    const hadSelection = selectedIndices.size > 0;
+    selectedIndices.clear();
+    render();
+    if (hadSelection && announceChange) announce("Node selection cleared");
   }
 
   function selectedIndexList() {
@@ -520,7 +530,7 @@ function initializeEditor() {
 
     points.forEach((point, index) => {
       const group = createSvgElement("g", {
-        class: `node${selectedIndices.has(index) ? " is-selected" : ""}${index === selectedIndex ? " is-primary" : ""}${point.type !== "corner" ? " is-curve" : ""}`,
+        class: `node${selectedIndices.has(index) ? " is-selected" : ""}${selectedIndices.has(index) && index === selectedIndex ? " is-primary" : ""}${point.type !== "corner" ? " is-curve" : ""}`,
         "data-node-index": String(index),
         role: "button",
         tabindex: "0",
@@ -556,6 +566,8 @@ function initializeEditor() {
   function render() {
     const selectedPoint = points[selectedIndex];
     const selectedPoints = selectedIndexList().map((index) => points[index]);
+    const hasSelection = selectedIndices.size > 0;
+    const hasSingleSelection = selectedIndices.size === 1;
     const viewBox = createZoomViewBox(
       zoom,
       CANVAS_WIDTH,
@@ -572,16 +584,17 @@ function initializeEditor() {
     renderHandles();
     renderCanvasNodes();
     renderNodeList();
-    const hasSingleSelection = selectedIndices.size === 1;
     nodeXInput.disabled = !hasSingleSelection;
     nodeYInput.disabled = !hasSingleSelection;
     nodeXInput.value = hasSingleSelection ? formatNumber(selectedPoint.x) : "";
     nodeYInput.value = hasSingleSelection ? formatNumber(selectedPoint.y) : "";
-    nodeXInput.placeholder = hasSingleSelection ? "" : "Multiple";
-    nodeYInput.placeholder = hasSingleSelection ? "" : "Multiple";
-    selectionPill.textContent = hasSingleSelection
-      ? `Node ${selectedIndex + 1}`
-      : `${selectedIndices.size} nodes`;
+    nodeXInput.placeholder = hasSingleSelection ? "" : hasSelection ? "Multiple" : "None";
+    nodeYInput.placeholder = hasSingleSelection ? "" : hasSelection ? "Multiple" : "None";
+    selectionPill.textContent = !hasSelection
+      ? "No nodes"
+      : hasSingleSelection
+        ? `Node ${selectedIndex + 1}`
+        : `${selectedIndices.size} nodes`;
     nodeCount.textContent = String(points.length);
     const curvedCount = points.filter((point) => point.type !== "corner").length;
     nodeSummary.textContent = `${points.length} nodes · ${curvedCount} curved · Closed path`;
@@ -589,15 +602,22 @@ function initializeEditor() {
     zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
     zoomInButton.disabled = zoom === ZOOM_LEVELS.at(-1);
 
-    const isCorner = selectedPoints.every((point) => point.type === "corner");
-    const isCurve = selectedPoints.every((point) => point.type === "smooth");
-    const isUneven = selectedPoints.every((point) => point.type === "asymmetric");
+    const isCorner = hasSelection && selectedPoints.every((point) => point.type === "corner");
+    const isCurve = hasSelection && selectedPoints.every((point) => point.type === "smooth");
+    const isUneven =
+      hasSelection && selectedPoints.every((point) => point.type === "asymmetric");
     cornerButton.classList.toggle("is-active", isCorner);
     curveButton.classList.toggle("is-active", isCurve);
     unevenButton.classList.toggle("is-active", isUneven);
     cornerButton.setAttribute("aria-pressed", String(isCorner));
     curveButton.setAttribute("aria-pressed", String(isCurve));
     unevenButton.setAttribute("aria-pressed", String(isUneven));
+    cornerButton.disabled = !hasSelection;
+    curveButton.disabled = !hasSelection;
+    unevenButton.disabled = !hasSelection;
+    addNodeButton.disabled = !hasSelection;
+    deselectButton.disabled = !hasSelection;
+    deleteButton.disabled = !hasSelection;
 
     const isNodeTool = activeTool === "node";
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
@@ -659,6 +679,13 @@ function initializeEditor() {
     if (!dragging) return;
 
     if (dragging.kind === "pan") {
+      const screenDistance = Math.hypot(
+        event.clientX - dragging.startClient.x,
+        event.clientY - dragging.startClient.y,
+      );
+      if (!dragging.moved && screenDistance < 3) return;
+
+      dragging.moved = true;
       viewCenter = {
         x:
           dragging.startCenter.x -
@@ -716,11 +743,19 @@ function initializeEditor() {
   }
 
   function addMidpointNode() {
+    if (selectedIndices.size === 0) {
+      announce("Select a node before adding a midpoint");
+      return;
+    }
     addNodeAt(selectedIndex, 0.5, "Added midpoint node {node}");
   }
 
   function deleteSelectedNode() {
     const indices = selectedIndexList();
+    if (indices.length === 0) {
+      announce("Select one or more nodes to delete");
+      return;
+    }
     if (points.length - indices.length < 3) {
       announce("A closed shape needs at least 3 nodes");
       return;
@@ -741,6 +776,7 @@ function initializeEditor() {
   }
 
   function updateSelectedCoordinate(axis, value) {
+    if (selectedIndices.size !== 1) return;
     const parsedValue = Number(value);
     if (!Number.isFinite(parsedValue)) return;
 
@@ -751,6 +787,7 @@ function initializeEditor() {
 
   function nudgeSelectedNode(horizontalChange, verticalChange) {
     const indices = selectedIndexList();
+    if (indices.length === 0) return;
     const positions = indices.map((index) => ({
       index,
       x: points[index].x,
@@ -765,6 +802,10 @@ function initializeEditor() {
   }
 
   function changeSelectedNodeType(type) {
+    if (selectedIndices.size === 0) {
+      announce("Select one or more nodes to change their type");
+      return;
+    }
     selectedIndexList().forEach((index) => setPointType(points, index, type));
     render();
     const messages = {
@@ -852,6 +893,7 @@ function initializeEditor() {
       );
       dragging = {
         kind: "pan",
+        moved: false,
         startClient: { x: event.clientX, y: event.clientY },
         startCenter: { ...viewCenter },
         unitsPerPixel: {
@@ -873,6 +915,11 @@ function initializeEditor() {
     const completedDrag = dragging;
     dragging = null;
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+
+    if (completedDrag.kind === "pan" && !completedDrag.moved) {
+      deselectAllNodes({ announceChange: true });
+      return;
+    }
 
     if (
       completedDrag.kind === "shape" &&
@@ -929,8 +976,11 @@ function initializeEditor() {
   unevenButton.addEventListener("click", () => changeSelectedNodeType("asymmetric"));
   pointerToolButton.addEventListener("click", () => setActiveTool("pointer"));
   nodeToolButton.addEventListener("click", () => setActiveTool("node"));
-  document.querySelector("#tool-add-node").addEventListener("click", addMidpointNode);
-  document.querySelector("#delete-node").addEventListener("click", deleteSelectedNode);
+  addNodeButton.addEventListener("click", addMidpointNode);
+  deselectButton.addEventListener("click", () =>
+    deselectAllNodes({ announceChange: true }),
+  );
+  deleteButton.addEventListener("click", deleteSelectedNode);
   document.querySelector("#download-svg").addEventListener("click", downloadCurrentSvg);
   zoomOutButton.addEventListener("click", () => changeZoom(-1));
   zoomResetButton.addEventListener("click", resetZoom);

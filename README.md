@@ -16,6 +16,7 @@ The prototype currently supports:
 - Hiding the node inspector while the Pointer tool is active
 - Clicking the shape in Node mode to select every node
 - Shift-clicking nodes to build or reduce a multiple-node selection
+- Clicking the checkerboard or using Deselect to clear the node selection
 - Switching nodes between Corner, Curve, and Uneven modes
 - Dragging paired Bézier handles to shape smooth curves
 - Using Uneven curve nodes whose aligned handles keep independent lengths

@@ -364,6 +364,28 @@ a:focus-visible {
   border-color: #6c3541;
 }
 
+.compact-button:disabled,
+.node-type-toggle button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.compact-button:disabled:hover {
+  color: #dce7ef;
+  background: #242932;
+  border-color: #353c47;
+}
+
+.node-type-toggle button:disabled:hover {
+  color: #8e9cad;
+  background: transparent;
+}
+
+.number-field input:disabled {
+  color: #788596;
+  cursor: default;
+}
+
 .canvas-shell {
   display: grid;
   min-height: 0;
