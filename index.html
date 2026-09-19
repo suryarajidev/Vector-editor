@@ -5,41 +5,214 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A small first test for downloading SVG artwork from Vector Editor."
+      content="A lightweight vector editor prototype for editing SVG path nodes."
     />
-    <title>Vector Editor — SVG download test</title>
+    <title>Vector Editor — Node prototype</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="page-shell">
-      <section class="download-card" aria-labelledby="page-title">
-        <div class="mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48" role="img">
-            <path d="M13 34 24 10l11 24-11-5-11 5Z" />
-            <circle cx="24" cy="23" r="3.5" />
-          </svg>
+    <div class="app-shell">
+      <header class="app-bar">
+        <a class="brand" href="#" aria-label="Vector Editor home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path d="m7 24 9-18 9 18-9-4-9 4Z" />
+              <circle cx="16" cy="16" r="2.5" />
+            </svg>
+          </span>
+          <span>Vector Editor</span>
+        </a>
+
+        <div class="project-title" aria-label="Current document">
+          <span class="project-dot" aria-hidden="true"></span>
+          Untitled shape
         </div>
 
-        <p class="eyebrow">Vector Editor · first experiment</p>
-        <h1 id="page-title">Let’s make sure SVG downloads work.</h1>
-        <p class="intro">
-          Press the button and your browser will save a small piece of surprise
-          vector artwork. No libraries or server required.
-        </p>
+        <div class="app-actions">
+          <button class="button button-quiet" id="reset-shape" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0 0 12 2M18.5 9a7 7 0 0 0-12-2" />
+            </svg>
+            <span>Reset</span>
+          </button>
+          <button class="button button-primary" id="download-svg" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 20h14" />
+            </svg>
+            <span>Download SVG</span>
+          </button>
+        </div>
+      </header>
 
-        <button class="download-button" id="download-svg" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" />
-          </svg>
-          Download a surprise SVG
-        </button>
+      <main class="editor-layout">
+        <aside class="asset-rail" aria-label="Objects">
+          <div class="rail-heading">
+            <span>Objects</span>
+            <span class="count-badge">1</span>
+          </div>
+          <div class="object-card is-active" aria-label="Shape 1 selected">
+            <span class="object-preview" aria-hidden="true">
+              <svg viewBox="0 0 80 60">
+                <path d="M12 41 8 26l15-16 23-1 24 18-8 23-27 2Z" />
+              </svg>
+            </span>
+            <span class="object-name">Shape 1</span>
+            <span class="object-meta">Vector path</span>
+          </div>
+        </aside>
 
-        <p class="status" id="download-status" aria-live="polite">
-          The downloaded artwork will have a transparent background.
-        </p>
-      </section>
-    </main>
+        <section class="workspace" aria-label="Vector workspace">
+          <div class="context-bar">
+            <div class="tool-label">
+              <span class="tool-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M5 4v16M19 4v16M5 8h14M5 16h14" />
+                  <circle cx="5" cy="8" r="2" />
+                  <circle cx="19" cy="8" r="2" />
+                  <circle cx="5" cy="16" r="2" />
+                  <circle cx="19" cy="16" r="2" />
+                </svg>
+              </span>
+              <div>
+                <strong>Node tool</strong>
+                <span>Edit the points that make the shape</span>
+              </div>
+            </div>
 
+            <div class="node-actions" aria-label="Node actions">
+              <button class="compact-button danger" id="delete-node" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                </svg>
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <div class="canvas-shell">
+            <div class="tool-strip" aria-label="Tools">
+              <button class="tool-button" type="button" aria-label="Select tool coming later" title="Select tool coming later" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 3 11 9-6 1-3 6L6 3Z" />
+                </svg>
+              </button>
+              <button
+                class="tool-button is-active"
+                type="button"
+                aria-label="Node tool selected"
+                aria-pressed="true"
+                title="Node tool"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 6h14v12H5z" />
+                  <circle cx="5" cy="6" r="2" />
+                  <circle cx="19" cy="6" r="2" />
+                  <circle cx="5" cy="18" r="2" />
+                  <circle cx="19" cy="18" r="2" />
+                </svg>
+              </button>
+              <span class="tool-divider" aria-hidden="true"></span>
+              <button class="tool-button" id="tool-add-node" type="button" aria-label="Add node" title="Add node">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 17 10 7l9 10M12 12h8m-4-4v8" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="canvas-viewport">
+              <div class="artboard-frame">
+                <svg
+                  id="editor-canvas"
+                  viewBox="0 0 640 420"
+                  role="application"
+                  aria-label="Editable vector canvas. Drag the numbered nodes to reshape the object."
+                >
+                  <defs>
+                    <linearGradient id="shape-gradient" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#9f7aea" />
+                      <stop offset="0.38" stop-color="#7657e8" />
+                      <stop offset="0.72" stop-color="#2db7df" />
+                      <stop offset="1" stop-color="#16d2b4" />
+                    </linearGradient>
+                    <filter id="shape-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#18233e" flood-opacity="0.22" />
+                    </filter>
+                  </defs>
+                  <path id="shape-path" filter="url(#shape-shadow)" />
+                  <path id="path-hit-target" aria-label="Click an edge to add a node" />
+                  <g id="node-layer" aria-label="Path nodes"></g>
+                </svg>
+
+                <div class="canvas-hint" id="canvas-hint">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 2v13l3-3 3 7 3-2-3-7h5L8 2Z" />
+                  </svg>
+                  Drag nodes · click a line to add
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <footer class="status-bar">
+            <span><span class="status-light" aria-hidden="true"></span> Node editing</span>
+            <span id="node-summary">7 nodes · Closed path</span>
+            <span>100%</span>
+          </footer>
+        </section>
+
+        <aside class="inspector" aria-labelledby="inspector-title">
+          <div class="inspector-heading">
+            <div>
+              <p class="eyebrow">Inspector</p>
+              <h2 id="inspector-title">Selected node</h2>
+            </div>
+            <span class="selection-pill" id="selection-pill">Node 1</span>
+          </div>
+
+          <div class="coordinate-grid">
+            <label>
+              <span>X position</span>
+              <span class="number-field"><b>X</b><input id="node-x" type="number" min="0" max="640" step="1" /></span>
+            </label>
+            <label>
+              <span>Y position</span>
+              <span class="number-field"><b>Y</b><input id="node-y" type="number" min="0" max="420" step="1" /></span>
+            </label>
+          </div>
+
+          <div class="property-row">
+            <span>Node type</span>
+            <span class="property-value">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 6h12v12H6z" />
+              </svg>
+              Corner
+            </span>
+          </div>
+
+          <div class="inspector-section">
+            <div class="section-title">
+              <h3>All nodes</h3>
+              <span id="node-count">7</span>
+            </div>
+            <div class="node-list" id="node-list"></div>
+          </div>
+
+          <div class="keyboard-card">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16v10H4zM7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13h7M16 13h1" />
+            </svg>
+            <div>
+              <strong>Keyboard control</strong>
+              <span>Arrow keys nudge · Shift moves 10 px · Delete removes</span>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>
   </body>
 </html>
