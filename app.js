@@ -392,6 +392,8 @@ function createArtworkSvg(points) {
 }
 
 function initializeEditor() {
+  const editorLayout = document.querySelector(".editor-layout");
+  const inspector = document.querySelector(".inspector");
   const svg = document.querySelector("#editor-canvas");
   const shapePath = document.querySelector("#shape-path");
   const segmentHitLayer = document.querySelector("#segment-hit-layer");
@@ -598,6 +600,8 @@ function initializeEditor() {
     unevenButton.setAttribute("aria-pressed", String(isUneven));
 
     const isNodeTool = activeTool === "node";
+    editorLayout.classList.toggle("pointer-mode", !isNodeTool);
+    inspector.setAttribute("aria-hidden", String(!isNodeTool));
     svg.classList.toggle("tool-node", isNodeTool);
     svg.classList.toggle("tool-pointer", !isNodeTool);
     svg.classList.toggle("is-dragging-canvas", dragging?.kind === "pan");

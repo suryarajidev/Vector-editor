@@ -11,7 +11,9 @@ The prototype currently supports:
 - Selecting and dragging numbered path nodes
 - Switching between Pointer and Node tools
 - Dragging empty canvas space to pan with either tool
+- Panning the checkerboard background together with the artwork
 - Dragging the filled shape to move the whole object
+- Hiding the node inspector while the Pointer tool is active
 - Clicking the shape in Node mode to select every node
 - Shift-clicking nodes to build or reduce a multiple-node selection
 - Switching nodes between Corner, Curve, and Uneven modes
