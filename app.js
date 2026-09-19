@@ -14,6 +14,10 @@ const INITIAL_POINTS = Object.freeze([
   { x: 300, y: 355, type: "corner", handleIn: null, handleOut: null },
 ]);
 
+const CANVAS_WIDTH = 640;
+const CANVAS_HEIGHT = 420;
+const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
+
 function clonePoints(points) {
   return points.map((point) => ({
     x: point.x,
@@ -53,6 +57,19 @@ function lerpPoint(first, second, amount) {
 
 function formatNumber(value) {
   return String(Number(roundValue(value)));
+}
+
+function createZoomViewBox(zoom, width = CANVAS_WIDTH, height = CANVAS_HEIGHT) {
+  const safeZoom = Math.max(zoom, Number.EPSILON);
+  const viewWidth = width / safeZoom;
+  const viewHeight = height / safeZoom;
+
+  return {
+    x: (width - viewWidth) / 2,
+    y: (height - viewHeight) / 2,
+    width: viewWidth,
+    height: viewHeight,
+  };
 }
 
 function absoluteHandle(point, handleName) {
@@ -366,11 +383,16 @@ function initializeEditor() {
   const selectionPill = document.querySelector("#selection-pill");
   const nodeCount = document.querySelector("#node-count");
   const nodeSummary = document.querySelector("#node-summary");
+  const zoomOutButton = document.querySelector("#zoom-out");
+  const zoomResetButton = document.querySelector("#zoom-reset");
+  const zoomInButton = document.querySelector("#zoom-in");
+  const zoomLabel = document.querySelector("#zoom-label");
   const toast = document.querySelector("#toast");
   const canvasHint = document.querySelector("#canvas-hint");
 
   let points = clonePoints(INITIAL_POINTS);
   let selectedIndex = 0;
+  let zoom = 1;
   let dragging = null;
   let toastTimeout;
 
@@ -425,7 +447,7 @@ function initializeEditor() {
       class: "control-handle",
       cx: formatNumber(handleIn.x),
       cy: formatNumber(handleIn.y),
-      r: "6",
+      r: formatNumber(6 / zoom),
       "data-handle": "handleIn",
       "aria-label": "Incoming curve handle",
     });
@@ -433,7 +455,7 @@ function initializeEditor() {
       class: "control-handle",
       cx: formatNumber(handleOut.x),
       cy: formatNumber(handleOut.y),
-      r: "6",
+      r: formatNumber(6 / zoom),
       "data-handle": "handleOut",
       "aria-label": "Outgoing curve handle",
     });
@@ -450,7 +472,7 @@ function initializeEditor() {
         role: "button",
         tabindex: "0",
         "aria-label": `Node ${index + 1}, ${point.type}, x ${formatNumber(point.x)}, y ${formatNumber(point.y)}`,
-        transform: `translate(${formatNumber(point.x)} ${formatNumber(point.y)})`,
+        transform: `translate(${formatNumber(point.x)} ${formatNumber(point.y)}) scale(${formatNumber(1 / zoom)})`,
       });
       const circle = createSvgElement("circle", { class: "node-ring", r: "9" });
       const label = createSvgElement("text", { class: "node-number", y: "0.5" });
@@ -478,6 +500,11 @@ function initializeEditor() {
 
   function render() {
     const selectedPoint = points[selectedIndex];
+    const viewBox = createZoomViewBox(zoom);
+    svg.setAttribute(
+      "viewBox",
+      `${formatNumber(viewBox.x)} ${formatNumber(viewBox.y)} ${formatNumber(viewBox.width)} ${formatNumber(viewBox.height)}`,
+    );
     shapePath.setAttribute("d", createPathData(points));
     renderSegmentHitTargets();
     renderHandles();
@@ -489,6 +516,9 @@ function initializeEditor() {
     nodeCount.textContent = String(points.length);
     const curvedCount = points.filter((point) => point.type !== "corner").length;
     nodeSummary.textContent = `${points.length} nodes · ${curvedCount} curved · Closed path`;
+    zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+    zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
+    zoomInButton.disabled = zoom === ZOOM_LEVELS.at(-1);
 
     const isCorner = selectedPoint.type === "corner";
     const isCurve = selectedPoint.type === "smooth";
@@ -499,6 +529,18 @@ function initializeEditor() {
     cornerButton.setAttribute("aria-pressed", String(isCorner));
     curveButton.setAttribute("aria-pressed", String(isCurve));
     unevenButton.setAttribute("aria-pressed", String(isUneven));
+  }
+
+  function changeZoom(direction) {
+    const currentIndex = ZOOM_LEVELS.indexOf(zoom);
+    const nextIndex = clamp(currentIndex + direction, 0, ZOOM_LEVELS.length - 1);
+    zoom = ZOOM_LEVELS[nextIndex];
+    render();
+  }
+
+  function resetZoom() {
+    zoom = 1;
+    render();
   }
 
   function pointFromPointer(event) {
@@ -650,6 +692,16 @@ function initializeEditor() {
     dragging = null;
   });
 
+  svg.addEventListener(
+    "wheel",
+    (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      changeZoom(event.deltaY < 0 ? 1 : -1);
+    },
+    { passive: false },
+  );
+
   nodeLayer.addEventListener("click", (event) => {
     const node = event.target.closest("[data-node-index]");
     if (node) selectNode(Number(node.dataset.nodeIndex));
@@ -670,6 +722,9 @@ function initializeEditor() {
   document.querySelector("#tool-add-node").addEventListener("click", addMidpointNode);
   document.querySelector("#delete-node").addEventListener("click", deleteSelectedNode);
   document.querySelector("#download-svg").addEventListener("click", downloadCurrentSvg);
+  zoomOutButton.addEventListener("click", () => changeZoom(-1));
+  zoomResetButton.addEventListener("click", resetZoom);
+  zoomInButton.addEventListener("click", () => changeZoom(1));
 
   document.querySelector("#reset-shape").addEventListener("click", () => {
     points = clonePoints(INITIAL_POINTS);
@@ -714,6 +769,7 @@ const VectorEditorCore = {
   createArtworkSvg,
   createPathData,
   createSegmentPathData,
+  createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
   midpoint,

@@ -158,7 +158,21 @@
           <footer class="status-bar">
             <span><span class="status-light" aria-hidden="true"></span> Node editing</span>
             <span id="node-summary">7 nodes · Closed path</span>
-            <span>100%</span>
+            <div class="zoom-controls" aria-label="Canvas zoom controls">
+              <button class="zoom-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5 10h10" />
+                </svg>
+              </button>
+              <button class="zoom-level" id="zoom-reset" type="button" title="Reset zoom to 100%">
+                <span id="zoom-label">100%</span>
+              </button>
+              <button class="zoom-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5 10h10M10 5v10" />
+                </svg>
+              </button>
+            </div>
           </footer>
         </section>
 

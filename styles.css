@@ -603,6 +603,60 @@ a:focus-visible {
   box-shadow: 0 0 0 3px rgb(37 208 181 / 12%);
 }
 
+.zoom-controls {
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  height: 24px;
+  background: #20242b;
+  border: 1px solid #343a45;
+  border-radius: 6px;
+}
+
+.zoom-button,
+.zoom-level {
+  display: grid;
+  height: 100%;
+  padding: 0;
+  color: #aeb8c6;
+  background: transparent;
+  border: 0;
+  place-items: center;
+  cursor: pointer;
+}
+
+.zoom-button {
+  width: 25px;
+}
+
+.zoom-level {
+  min-width: 48px;
+  padding: 0 7px;
+  font-size: 0.62rem;
+  font-weight: 750;
+  border-right: 1px solid #343a45;
+  border-left: 1px solid #343a45;
+}
+
+.zoom-button svg {
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.zoom-button:hover:not(:disabled),
+.zoom-level:hover {
+  color: #ffffff;
+  background: #2a3039;
+}
+
+.zoom-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .inspector {
   overflow-y: auto;
   padding: 20px;

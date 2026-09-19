@@ -6,6 +6,7 @@ const {
   closestTOnCubic,
   createArtworkSvg,
   createPathData,
+  createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
   midpoint,
@@ -130,5 +131,9 @@ assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
 assert.equal((svg.match(/<stop /g) ?? []).length, 4);
+
+assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
+assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });
+assert.deepEqual(createZoomViewBox(0.5), { x: -320, y: -210, width: 1280, height: 840 });
 
 console.log("Node editor tests passed");

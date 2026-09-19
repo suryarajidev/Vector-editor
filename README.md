@@ -17,6 +17,8 @@ The prototype currently supports:
 - Adding a curve-preserving midpoint node from the left toolbar
 - Deleting nodes while preserving the three-node minimum for a closed shape
 - Nudging nodes with the arrow keys (`Shift` moves 10 pixels)
+- Zooming from 50% to 400% with status-bar controls or `Ctrl`/`Command` + mouse wheel
+- Keeping node markers and curve-handle dots the same on-screen size at every zoom level
 - Resetting the example shape
 - Downloading the edited shape as an SVG with a non-scaling outline
 
