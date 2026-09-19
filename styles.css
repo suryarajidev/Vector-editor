@@ -466,13 +466,39 @@ a:focus-visible {
   vector-effect: non-scaling-stroke;
 }
 
-#path-hit-target {
+.segment-hit {
   fill: none;
   stroke: transparent;
   stroke-width: 20;
   vector-effect: non-scaling-stroke;
   cursor: copy;
   pointer-events: stroke;
+}
+
+.handle-guide {
+  fill: none;
+  stroke: #049bc2;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.control-handle {
+  fill: #ffffff;
+  stroke: #049bc2;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
+.control-handle:hover {
+  fill: #bff6ff;
+  stroke: #007b9d;
+}
+
+.control-handle:active {
+  cursor: grabbing;
 }
 
 .node {
@@ -505,6 +531,10 @@ a:focus-visible {
   stroke: #ffffff;
   stroke-width: 4;
   filter: drop-shadow(0 3px 5px rgb(78 18 55 / 30%));
+}
+
+.node.is-curve:not(.is-selected) .node-ring {
+  fill: #dffaff;
 }
 
 .node .node-number {
@@ -688,6 +718,51 @@ a:focus-visible {
 .property-value svg {
   width: 14px;
   color: #80def0;
+}
+
+.node-type-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  background: #11141a;
+  border: 1px solid #353c47;
+  border-radius: 8px;
+}
+
+.node-type-toggle button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  color: #8e9cad;
+  font-size: 0.66rem;
+  font-weight: 740;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.node-type-toggle button + button {
+  border-left: 1px solid #353c47;
+}
+
+.node-type-toggle button:hover {
+  color: #eaf8ff;
+  background: #252b34;
+}
+
+.node-type-toggle button.is-active {
+  color: #ffffff;
+  background: #087fa3;
+}
+
+.node-type-toggle svg {
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .inspector-section {

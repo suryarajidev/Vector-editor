@@ -9,9 +9,11 @@ Open `index.html` directly in a browser. No server, build step, or package insta
 The prototype currently supports:
 
 - Selecting and dragging numbered path nodes
-- Clicking an edge to insert a node exactly on that segment
+- Switching nodes between Corner and Curve modes
+- Dragging paired Bézier handles to shape smooth curves
+- Clicking a straight or curved edge to insert a node without changing its shape
 - Editing the selected node's X and Y coordinates
-- Adding a midpoint node after the current selection from the left toolbar
+- Adding a curve-preserving midpoint node from the left toolbar
 - Deleting nodes while preserving the three-node minimum for a closed shape
 - Nudging nodes with the arrow keys (`Shift` moves 10 pixels)
 - Resetting the example shape

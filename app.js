@@ -1,19 +1,35 @@
 const INITIAL_POINTS = Object.freeze([
-  { x: 170, y: 310 },
-  { x: 135, y: 205 },
-  { x: 225, y: 120 },
-  { x: 360, y: 105 },
-  { x: 495, y: 195 },
-  { x: 455, y: 325 },
-  { x: 300, y: 355 },
+  {
+    x: 170,
+    y: 310,
+    type: "smooth",
+    handleIn: { x: 42, y: 38 },
+    handleOut: { x: -42, y: -38 },
+  },
+  { x: 135, y: 205, type: "corner", handleIn: null, handleOut: null },
+  { x: 225, y: 120, type: "corner", handleIn: null, handleOut: null },
+  { x: 360, y: 105, type: "corner", handleIn: null, handleOut: null },
+  { x: 495, y: 195, type: "corner", handleIn: null, handleOut: null },
+  { x: 455, y: 325, type: "corner", handleIn: null, handleOut: null },
+  { x: 300, y: 355, type: "corner", handleIn: null, handleOut: null },
 ]);
 
 function clonePoints(points) {
-  return points.map(({ x, y }) => ({ x, y }));
+  return points.map((point) => ({
+    x: point.x,
+    y: point.y,
+    type: point.type ?? "corner",
+    handleIn: point.handleIn ? { ...point.handleIn } : null,
+    handleOut: point.handleOut ? { ...point.handleOut } : null,
+  }));
 }
 
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
+}
+
+function roundValue(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function midpoint(first, second) {
@@ -21,6 +37,90 @@ function midpoint(first, second) {
     x: Math.round((first.x + second.x) / 2),
     y: Math.round((first.y + second.y) / 2),
   };
+}
+
+function distance(first, second) {
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function lerpPoint(first, second, amount) {
+  return {
+    x: first.x + (second.x - first.x) * amount,
+    y: first.y + (second.y - first.y) * amount,
+  };
+}
+
+function formatNumber(value) {
+  return String(Number(roundValue(value)));
+}
+
+function absoluteHandle(point, handleName) {
+  const handle = point[handleName];
+  return handle
+    ? { x: point.x + handle.x, y: point.y + handle.y }
+    : { x: point.x, y: point.y };
+}
+
+function isCurvedSegment(segmentStart, segmentEnd) {
+  return Boolean(segmentStart.handleOut || segmentEnd.handleIn);
+}
+
+function segmentGeometry(points, segmentIndex) {
+  const start = points[segmentIndex];
+  const end = points[(segmentIndex + 1) % points.length];
+
+  return {
+    start,
+    controlStart: absoluteHandle(start, "handleOut"),
+    controlEnd: absoluteHandle(end, "handleIn"),
+    end,
+    curved: isCurvedSegment(start, end),
+  };
+}
+
+function createSegmentCommand(segmentStart, segmentEnd) {
+  if (!isCurvedSegment(segmentStart, segmentEnd)) {
+    return `L ${formatNumber(segmentEnd.x)} ${formatNumber(segmentEnd.y)}`;
+  }
+
+  const controlStart = absoluteHandle(segmentStart, "handleOut");
+  const controlEnd = absoluteHandle(segmentEnd, "handleIn");
+  return [
+    "C",
+    formatNumber(controlStart.x),
+    formatNumber(controlStart.y),
+    formatNumber(controlEnd.x),
+    formatNumber(controlEnd.y),
+    formatNumber(segmentEnd.x),
+    formatNumber(segmentEnd.y),
+  ].join(" ");
+}
+
+function createSegmentPathData(points, segmentIndex) {
+  const start = points[segmentIndex];
+  const end = points[(segmentIndex + 1) % points.length];
+  return `M ${formatNumber(start.x)} ${formatNumber(start.y)} ${createSegmentCommand(start, end)}`;
+}
+
+function createPathData(points, closed = true) {
+  if (points.length === 0) return "";
+
+  const commands = [`M ${formatNumber(points[0].x)} ${formatNumber(points[0].y)}`];
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    commands.push(createSegmentCommand(points[index], points[index + 1]));
+  }
+
+  if (closed) {
+    const lastPoint = points.at(-1);
+    const firstPoint = points[0];
+    if (isCurvedSegment(lastPoint, firstPoint)) {
+      commands.push(createSegmentCommand(lastPoint, firstPoint));
+    }
+    commands.push("Z");
+  }
+
+  return commands.join(" ");
 }
 
 function closestPointOnSegment(point, segmentStart, segmentEnd) {
@@ -40,6 +140,7 @@ function closestPointOnSegment(point, segmentStart, segmentEnd) {
   return {
     x: Math.round(x),
     y: Math.round(y),
+    position,
     distanceSquared: (point.x - x) ** 2 + (point.y - y) ** 2,
   };
 }
@@ -61,15 +162,132 @@ function findClosestSegment(points, point) {
   return closest;
 }
 
-function createPathData(points, closed = true) {
-  if (points.length === 0) return "";
+function cubicPointAt(start, controlStart, controlEnd, end, amount) {
+  const inverse = 1 - amount;
+  return {
+    x:
+      inverse ** 3 * start.x
+      + 3 * inverse ** 2 * amount * controlStart.x
+      + 3 * inverse * amount ** 2 * controlEnd.x
+      + amount ** 3 * end.x,
+    y:
+      inverse ** 3 * start.y
+      + 3 * inverse ** 2 * amount * controlStart.y
+      + 3 * inverse * amount ** 2 * controlEnd.y
+      + amount ** 3 * end.y,
+  };
+}
 
-  const commands = points.map((point, index) => {
-    const command = index === 0 ? "M" : "L";
-    return `${command} ${point.x} ${point.y}`;
+function closestTOnCubic(point, start, controlStart, controlEnd, end) {
+  const samples = 48;
+  let bestAmount = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index <= samples; index += 1) {
+    const amount = index / samples;
+    const candidate = cubicPointAt(start, controlStart, controlEnd, end, amount);
+    const candidateDistance = (point.x - candidate.x) ** 2 + (point.y - candidate.y) ** 2;
+    if (candidateDistance < bestDistance) {
+      bestAmount = amount;
+      bestDistance = candidateDistance;
+    }
+  }
+
+  let lower = Math.max(0, bestAmount - 1 / samples);
+  let upper = Math.min(1, bestAmount + 1 / samples);
+
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const first = lower + (upper - lower) / 3;
+    const second = upper - (upper - lower) / 3;
+    const firstPoint = cubicPointAt(start, controlStart, controlEnd, end, first);
+    const secondPoint = cubicPointAt(start, controlStart, controlEnd, end, second);
+    const firstDistance = (point.x - firstPoint.x) ** 2 + (point.y - firstPoint.y) ** 2;
+    const secondDistance = (point.x - secondPoint.x) ** 2 + (point.y - secondPoint.y) ** 2;
+
+    if (firstDistance < secondDistance) upper = second;
+    else lower = first;
+  }
+
+  return (lower + upper) / 2;
+}
+
+function splitSegment(points, segmentIndex, amount) {
+  const geometry = segmentGeometry(points, segmentIndex);
+  const insertAt = segmentIndex + 1;
+
+  if (!geometry.curved) {
+    const position = lerpPoint(geometry.start, geometry.end, amount);
+    points.splice(insertAt, 0, {
+      x: roundValue(position.x),
+      y: roundValue(position.y),
+      type: "corner",
+      handleIn: null,
+      handleOut: null,
+    });
+    return insertAt;
+  }
+
+  const firstLevelStart = lerpPoint(geometry.start, geometry.controlStart, amount);
+  const firstLevelMiddle = lerpPoint(geometry.controlStart, geometry.controlEnd, amount);
+  const firstLevelEnd = lerpPoint(geometry.controlEnd, geometry.end, amount);
+  const secondLevelStart = lerpPoint(firstLevelStart, firstLevelMiddle, amount);
+  const secondLevelEnd = lerpPoint(firstLevelMiddle, firstLevelEnd, amount);
+  const splitPoint = lerpPoint(secondLevelStart, secondLevelEnd, amount);
+  const roundedSplit = { x: roundValue(splitPoint.x), y: roundValue(splitPoint.y) };
+
+  if (geometry.start.handleOut) {
+    geometry.start.handleOut = {
+      x: roundValue(firstLevelStart.x - geometry.start.x),
+      y: roundValue(firstLevelStart.y - geometry.start.y),
+    };
+  }
+  if (geometry.end.handleIn) {
+    geometry.end.handleIn = {
+      x: roundValue(firstLevelEnd.x - geometry.end.x),
+      y: roundValue(firstLevelEnd.y - geometry.end.y),
+    };
+  }
+
+  points.splice(insertAt, 0, {
+    ...roundedSplit,
+    type: "smooth",
+    handleIn: {
+      x: roundValue(secondLevelStart.x - roundedSplit.x),
+      y: roundValue(secondLevelStart.y - roundedSplit.y),
+    },
+    handleOut: {
+      x: roundValue(secondLevelEnd.x - roundedSplit.x),
+      y: roundValue(secondLevelEnd.y - roundedSplit.y),
+    },
   });
 
-  return `${commands.join(" ")}${closed ? " Z" : ""}`;
+  return insertAt;
+}
+
+function setPointType(points, index, type) {
+  const point = points[index];
+
+  if (type === "corner") {
+    point.type = "corner";
+    point.handleIn = null;
+    point.handleOut = null;
+    return;
+  }
+
+  if (point.type === "smooth" && point.handleIn && point.handleOut) return;
+
+  const previous = points[(index - 1 + points.length) % points.length];
+  const next = points[(index + 1) % points.length];
+  const tangentX = next.x - previous.x;
+  const tangentY = next.y - previous.y;
+  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+  const handleLength = Math.max(24, Math.min(distance(previous, point), distance(point, next)) * 0.34);
+  const handleX = roundValue((tangentX / tangentLength) * handleLength);
+  const handleY = roundValue((tangentY / tangentLength) * handleLength);
+
+  point.type = "smooth";
+  point.handleIn = { x: -handleX, y: -handleY };
+  point.handleOut = { x: handleX, y: handleY };
 }
 
 function createArtworkSvg(points) {
@@ -94,11 +312,14 @@ function createArtworkSvg(points) {
 function initializeEditor() {
   const svg = document.querySelector("#editor-canvas");
   const shapePath = document.querySelector("#shape-path");
-  const pathHitTarget = document.querySelector("#path-hit-target");
+  const segmentHitLayer = document.querySelector("#segment-hit-layer");
+  const handleLayer = document.querySelector("#handle-layer");
   const nodeLayer = document.querySelector("#node-layer");
   const nodeList = document.querySelector("#node-list");
   const nodeXInput = document.querySelector("#node-x");
   const nodeYInput = document.querySelector("#node-y");
+  const cornerButton = document.querySelector("#node-type-corner");
+  const curveButton = document.querySelector("#node-type-curve");
   const selectionPill = document.querySelector("#selection-pill");
   const nodeCount = document.querySelector("#node-count");
   const nodeSummary = document.querySelector("#node-summary");
@@ -107,7 +328,7 @@ function initializeEditor() {
 
   let points = clonePoints(INITIAL_POINTS);
   let selectedIndex = 0;
-  let draggingIndex = null;
+  let dragging = null;
   let toastTimeout;
 
   function announce(message) {
@@ -132,17 +353,61 @@ function initializeEditor() {
     return element;
   }
 
+  function renderSegmentHitTargets() {
+    segmentHitLayer.replaceChildren();
+
+    points.forEach((_, segmentIndex) => {
+      const hitPath = createSvgElement("path", {
+        class: "segment-hit",
+        d: createSegmentPathData(points, segmentIndex),
+        "data-segment-index": String(segmentIndex),
+        "aria-label": `Add node on segment ${segmentIndex + 1}`,
+      });
+      segmentHitLayer.append(hitPath);
+    });
+  }
+
+  function renderHandles() {
+    handleLayer.replaceChildren();
+    const point = points[selectedIndex];
+    if (point.type !== "smooth" || !point.handleIn || !point.handleOut) return;
+
+    const handleIn = absoluteHandle(point, "handleIn");
+    const handleOut = absoluteHandle(point, "handleOut");
+    const guide = createSvgElement("path", {
+      class: "handle-guide",
+      d: `M ${formatNumber(handleIn.x)} ${formatNumber(handleIn.y)} L ${formatNumber(point.x)} ${formatNumber(point.y)} L ${formatNumber(handleOut.x)} ${formatNumber(handleOut.y)}`,
+    });
+    const incoming = createSvgElement("circle", {
+      class: "control-handle",
+      cx: formatNumber(handleIn.x),
+      cy: formatNumber(handleIn.y),
+      r: "6",
+      "data-handle": "handleIn",
+      "aria-label": "Incoming curve handle",
+    });
+    const outgoing = createSvgElement("circle", {
+      class: "control-handle",
+      cx: formatNumber(handleOut.x),
+      cy: formatNumber(handleOut.y),
+      r: "6",
+      "data-handle": "handleOut",
+      "aria-label": "Outgoing curve handle",
+    });
+    handleLayer.append(guide, incoming, outgoing);
+  }
+
   function renderCanvasNodes() {
     nodeLayer.replaceChildren();
 
     points.forEach((point, index) => {
       const group = createSvgElement("g", {
-        class: `node${index === selectedIndex ? " is-selected" : ""}`,
+        class: `node${index === selectedIndex ? " is-selected" : ""}${point.type === "smooth" ? " is-curve" : ""}`,
         "data-node-index": String(index),
         role: "button",
         tabindex: "0",
-        "aria-label": `Node ${index + 1}, x ${point.x}, y ${point.y}`,
-        transform: `translate(${point.x} ${point.y})`,
+        "aria-label": `Node ${index + 1}, ${point.type}, x ${formatNumber(point.x)}, y ${formatNumber(point.y)}`,
+        transform: `translate(${formatNumber(point.x)} ${formatNumber(point.y)})`,
       });
       const circle = createSvgElement("circle", { class: "node-ring", r: "9" });
       const label = createSvgElement("text", { class: "node-number", y: "0.5" });
@@ -160,8 +425,8 @@ function initializeEditor() {
       button.type = "button";
       button.className = index === selectedIndex ? "is-selected" : "";
       button.textContent = String(index + 1);
-      button.title = `Node ${index + 1}: ${point.x}, ${point.y}`;
-      button.setAttribute("aria-label", `Select node ${index + 1}`);
+      button.title = `Node ${index + 1}: ${point.type}, ${formatNumber(point.x)}, ${formatNumber(point.y)}`;
+      button.setAttribute("aria-label", `Select ${point.type} node ${index + 1}`);
       button.setAttribute("aria-pressed", String(index === selectedIndex));
       button.addEventListener("click", () => selectNode(index, { focus: true }));
       nodeList.append(button);
@@ -170,16 +435,23 @@ function initializeEditor() {
 
   function render() {
     const selectedPoint = points[selectedIndex];
-    const pathData = createPathData(points);
-    shapePath.setAttribute("d", pathData);
-    pathHitTarget.setAttribute("d", pathData);
+    shapePath.setAttribute("d", createPathData(points));
+    renderSegmentHitTargets();
+    renderHandles();
     renderCanvasNodes();
     renderNodeList();
-    nodeXInput.value = String(selectedPoint.x);
-    nodeYInput.value = String(selectedPoint.y);
+    nodeXInput.value = formatNumber(selectedPoint.x);
+    nodeYInput.value = formatNumber(selectedPoint.y);
     selectionPill.textContent = `Node ${selectedIndex + 1}`;
     nodeCount.textContent = String(points.length);
-    nodeSummary.textContent = `${points.length} nodes · Closed path`;
+    const curvedCount = points.filter((point) => point.type === "smooth").length;
+    nodeSummary.textContent = `${points.length} nodes · ${curvedCount} curved · Closed path`;
+
+    const isCurve = selectedPoint.type === "smooth";
+    cornerButton.classList.toggle("is-active", !isCurve);
+    curveButton.classList.toggle("is-active", isCurve);
+    cornerButton.setAttribute("aria-pressed", String(!isCurve));
+    curveButton.setAttribute("aria-pressed", String(isCurve));
   }
 
   function pointFromPointer(event) {
@@ -192,25 +464,39 @@ function initializeEditor() {
     return screenPoint.matrixTransform(matrix.inverse());
   }
 
-  function updateDraggedNode(event) {
-    if (draggingIndex === null) return;
+  function updateDrag(event) {
+    if (!dragging) return;
     const pointer = pointFromPointer(event);
     if (!pointer) return;
 
-    points[draggingIndex] = {
-      x: Math.round(clamp(pointer.x, 18, 622)),
-      y: Math.round(clamp(pointer.y, 18, 402)),
-    };
+    const point = points[dragging.index];
+
+    if (dragging.kind === "node") {
+      point.x = Math.round(clamp(pointer.x, 18, 622));
+      point.y = Math.round(clamp(pointer.y, 18, 402));
+    } else {
+      const handle = {
+        x: roundValue(pointer.x - point.x),
+        y: roundValue(pointer.y - point.y),
+      };
+      const opposite = dragging.handle === "handleIn" ? "handleOut" : "handleIn";
+      point[dragging.handle] = handle;
+      point[opposite] = { x: -handle.x, y: -handle.y };
+    }
+
     canvasHint.hidden = true;
     render();
   }
 
-  function addNode() {
-    const nextIndex = (selectedIndex + 1) % points.length;
-    const insertedIndex = selectedIndex + 1;
-    points.splice(insertedIndex, 0, midpoint(points[selectedIndex], points[nextIndex]));
+  function addNodeAt(segmentIndex, amount, message) {
+    const insertedIndex = splitSegment(points, segmentIndex, clamp(amount, 0.02, 0.98));
+    canvasHint.hidden = true;
     selectNode(insertedIndex, { focus: true });
-    announce(`Added node ${insertedIndex + 1}`);
+    announce(message.replace("{node}", String(insertedIndex + 1)));
+  }
+
+  function addMidpointNode() {
+    addNodeAt(selectedIndex, 0.5, "Added midpoint node {node}");
   }
 
   function deleteSelectedNode() {
@@ -242,6 +528,12 @@ function initializeEditor() {
     render();
   }
 
+  function changeSelectedNodeType(type) {
+    setPointType(points, selectedIndex, type);
+    render();
+    announce(type === "smooth" ? "Curve handles added" : "Converted to a corner node");
+  }
+
   function downloadCurrentSvg() {
     const blob = new Blob([createArtworkSvg(points)], {
       type: "image/svg+xml;charset=utf-8",
@@ -263,33 +555,49 @@ function initializeEditor() {
 
     event.preventDefault();
     selectedIndex = Number(node.dataset.nodeIndex);
-    draggingIndex = selectedIndex;
+    dragging = { kind: "node", index: selectedIndex };
     svg.setPointerCapture(event.pointerId);
-    updateDraggedNode(event);
+    updateDrag(event);
   });
 
-  pathHitTarget.addEventListener("click", (event) => {
+  handleLayer.addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest("[data-handle]");
+    if (!handle) return;
+
+    event.preventDefault();
+    dragging = { kind: "handle", index: selectedIndex, handle: handle.dataset.handle };
+    svg.setPointerCapture(event.pointerId);
+  });
+
+  segmentHitLayer.addEventListener("click", (event) => {
+    const segment = event.target.closest("[data-segment-index]");
     const pointer = pointFromPointer(event);
-    const closest = pointer && findClosestSegment(points, pointer);
-    if (!closest) return;
+    if (!segment || !pointer) return;
 
-    const insertedIndex = closest.segmentIndex + 1;
-    points.splice(insertedIndex, 0, { x: closest.x, y: closest.y });
-    canvasHint.hidden = true;
-    selectNode(insertedIndex, { focus: true });
-    announce(`Added node ${insertedIndex + 1} on the path`);
+    const segmentIndex = Number(segment.dataset.segmentIndex);
+    const geometry = segmentGeometry(points, segmentIndex);
+    const amount = geometry.curved
+      ? closestTOnCubic(
+          pointer,
+          geometry.start,
+          geometry.controlStart,
+          geometry.controlEnd,
+          geometry.end,
+        )
+      : closestPointOnSegment(pointer, geometry.start, geometry.end).position;
+    addNodeAt(segmentIndex, amount, "Added node {node} on the curve");
   });
 
-  svg.addEventListener("pointermove", updateDraggedNode);
+  svg.addEventListener("pointermove", updateDrag);
 
   svg.addEventListener("pointerup", (event) => {
-    if (draggingIndex === null) return;
-    draggingIndex = null;
+    if (!dragging) return;
+    dragging = null;
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
   });
 
   svg.addEventListener("pointercancel", () => {
-    draggingIndex = null;
+    dragging = null;
   });
 
   nodeLayer.addEventListener("click", (event) => {
@@ -306,7 +614,9 @@ function initializeEditor() {
 
   nodeXInput.addEventListener("change", (event) => updateSelectedCoordinate("x", event.target.value));
   nodeYInput.addEventListener("change", (event) => updateSelectedCoordinate("y", event.target.value));
-  document.querySelector("#tool-add-node").addEventListener("click", addNode);
+  cornerButton.addEventListener("click", () => changeSelectedNodeType("corner"));
+  curveButton.addEventListener("click", () => changeSelectedNodeType("smooth"));
+  document.querySelector("#tool-add-node").addEventListener("click", addMidpointNode);
   document.querySelector("#delete-node").addEventListener("click", deleteSelectedNode);
   document.querySelector("#download-svg").addEventListener("click", downloadCurrentSvg);
 
@@ -327,12 +637,12 @@ function initializeEditor() {
       return;
     }
 
-    const distance = event.shiftKey ? 10 : 1;
+    const movementDistance = event.shiftKey ? 10 : 1;
     const movements = {
-      ArrowLeft: [-distance, 0],
-      ArrowRight: [distance, 0],
-      ArrowUp: [0, -distance],
-      ArrowDown: [0, distance],
+      ArrowLeft: [-movementDistance, 0],
+      ArrowRight: [movementDistance, 0],
+      ArrowUp: [0, -movementDistance],
+      ArrowDown: [0, movementDistance],
     };
     const movement = movements[event.key];
     if (!movement) return;
@@ -346,12 +656,18 @@ function initializeEditor() {
 
 const VectorEditorCore = {
   INITIAL_POINTS,
+  absoluteHandle,
   clonePoints,
   closestPointOnSegment,
+  closestTOnCubic,
   createArtworkSvg,
   createPathData,
+  createSegmentPathData,
+  cubicPointAt,
   findClosestSegment,
   midpoint,
+  setPointType,
+  splitSegment,
 };
 
 if (typeof module !== "undefined" && module.exports) {

@@ -126,7 +126,7 @@
                   id="editor-canvas"
                   viewBox="0 0 640 420"
                   role="application"
-                  aria-label="Editable vector canvas. Drag the numbered nodes to reshape the object."
+                  aria-label="Editable vector canvas. Drag numbered nodes or curve handles to reshape the object."
                 >
                   <defs>
                     <linearGradient id="shape-gradient" x1="0" y1="0" x2="1" y2="1">
@@ -140,7 +140,8 @@
                     </filter>
                   </defs>
                   <path id="shape-path" filter="url(#shape-shadow)" />
-                  <path id="path-hit-target" aria-label="Click an edge to add a node" />
+                  <g id="segment-hit-layer" aria-label="Path segments"></g>
+                  <g id="handle-layer" aria-label="Curve handles"></g>
                   <g id="node-layer" aria-label="Path nodes"></g>
                 </svg>
 
@@ -148,7 +149,7 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 2v13l3-3 3 7 3-2-3-7h5L8 2Z" />
                   </svg>
-                  Drag nodes · click a line to add
+                  Drag nodes &amp; handles · click a line to add
                 </div>
               </div>
             </div>
@@ -183,12 +184,20 @@
 
           <div class="property-row">
             <span>Node type</span>
-            <span class="property-value">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6 6h12v12H6z" />
-              </svg>
-              Corner
-            </span>
+            <div class="node-type-toggle" role="group" aria-label="Selected node type">
+              <button id="node-type-corner" type="button" aria-pressed="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6h12v12H6z" />
+                </svg>
+                Corner
+              </button>
+              <button id="node-type-curve" type="button" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 16c3-8 11-8 14 0M5 16h.01M19 16h.01" />
+                </svg>
+                Curve
+              </button>
+            </div>
           </div>
 
           <div class="inspector-section">
