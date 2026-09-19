@@ -12,7 +12,10 @@ const {
   createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
+  hexToHsb,
+  hsbToHex,
   midpoint,
+  normalizeHexColor,
   setPointType,
   splitSegment,
   updatePointHandle,
@@ -133,7 +136,19 @@ assert.match(svg, /<title id="title">Node-edited vector shape<\/title>/);
 assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
-assert.equal((svg.match(/<stop /g) ?? []).length, 4);
+assert.match(svg, /fill="#7657e8"/);
+assert.equal((svg.match(/<linearGradient/g) ?? []).length, 0);
+
+assert.equal(normalizeHexColor("a329d6"), "#a329d6");
+assert.equal(normalizeHexColor("  #A329D6  "), "#a329d6");
+assert.equal(normalizeHexColor("#oops"), null);
+assert.equal(hsbToHex(0, 100, 100), "#ff0000");
+assert.equal(hsbToHex(50, 100, 100), "#00ffff");
+const purpleHsb = hexToHsb("#a329d6");
+assert.equal(
+  hsbToHex(purpleHsb.color, purpleHsb.saturation, purpleHsb.brightness),
+  "#a329d6",
+);
 
 const rectangle = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
 assert.deepEqual(
@@ -176,8 +191,17 @@ assert.deepEqual(
   ],
 );
 assert.equal(
-  (createDocumentSvg([{ points }, { points: rectangle }]).match(/<path /g) ?? []).length,
+  (
+    createDocumentSvg([
+      { points, color: "#a329d6" },
+      { points: rectangle, color: "#12b5a6" },
+    ]).match(/<path /g) ?? []
+  ).length,
   2,
+);
+assert.match(
+  createDocumentSvg([{ points, color: "#a329d6" }]),
+  /fill="#a329d6"/,
 );
 
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });

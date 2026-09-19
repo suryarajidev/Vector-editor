@@ -16,6 +16,7 @@ const INITIAL_POINTS = Object.freeze([
 
 const CANVAS_WIDTH = 640;
 const CANVAS_HEIGHT = 420;
+const DEFAULT_FILL_COLOR = "#7657e8";
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
 function clonePoints(points) {
@@ -35,6 +36,59 @@ function clamp(value, minimum, maximum) {
 function roundValue(value) {
   const rounded = Math.round(value * 100) / 100;
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  return /^#[0-9a-f]{6}$/i.test(withHash) ? withHash.toLowerCase() : null;
+}
+
+function hexToHsb(value) {
+  const hex = normalizeHexColor(value) ?? DEFAULT_FILL_COLOR;
+  const red = Number.parseInt(hex.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(hex.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(hex.slice(5, 7), 16) / 255;
+  const maximum = Math.max(red, green, blue);
+  const minimum = Math.min(red, green, blue);
+  const delta = maximum - minimum;
+  let hue = 0;
+
+  if (delta > 0) {
+    if (maximum === red) hue = ((green - blue) / delta) % 6;
+    else if (maximum === green) hue = (blue - red) / delta + 2;
+    else hue = (red - green) / delta + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+
+  return {
+    color: hue / 3.6,
+    saturation: maximum === 0 ? 0 : (delta / maximum) * 100,
+    brightness: maximum * 100,
+  };
+}
+
+function hsbToHex(color, saturation, brightness) {
+  const hue = ((clamp(Number(color) || 0, 0, 100) % 100) / 100) * 360;
+  const normalizedSaturation = clamp(Number(saturation) || 0, 0, 100) / 100;
+  const normalizedBrightness = clamp(Number(brightness) || 0, 0, 100) / 100;
+  const chroma = normalizedBrightness * normalizedSaturation;
+  const secondary = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const match = normalizedBrightness - chroma;
+  let channels;
+
+  if (hue < 60) channels = [chroma, secondary, 0];
+  else if (hue < 120) channels = [secondary, chroma, 0];
+  else if (hue < 180) channels = [0, chroma, secondary];
+  else if (hue < 240) channels = [0, secondary, chroma];
+  else if (hue < 300) channels = [secondary, 0, chroma];
+  else channels = [chroma, 0, secondary];
+
+  return `#${channels
+    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 function midpoint(first, second) {
@@ -406,7 +460,7 @@ function createDocumentSvg(shapes) {
   const paths = shapes
     .map(
       (shape) =>
-        `  <path d="${createPathData(shape.points)}" fill="url(#shapeGradient)" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
+        `  <path d="${createPathData(shape.points)}" fill="${normalizeHexColor(shape.color) ?? DEFAULT_FILL_COLOR}" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
     )
     .join("\n");
 
@@ -414,20 +468,12 @@ function createDocumentSvg(shapes) {
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img" aria-labelledby="title description">
   <title id="title">Node-edited vector shape</title>
   <desc id="description">A closed vector path created in Vector Editor.</desc>
-  <defs>
-    <linearGradient id="shapeGradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9f7aea"/>
-      <stop offset="0.38" stop-color="#7657e8"/>
-      <stop offset="0.72" stop-color="#2db7df"/>
-      <stop offset="1" stop-color="#16d2b4"/>
-    </linearGradient>
-  </defs>
 ${paths}
 </svg>`;
 }
 
 function createArtworkSvg(points) {
-  return createDocumentSvg([{ points }]);
+  return createDocumentSvg([{ points, color: DEFAULT_FILL_COLOR }]);
 }
 
 function initializeEditor() {
@@ -467,9 +513,27 @@ function initializeEditor() {
   const canvasHintText = document.querySelector("#canvas-hint-text");
   const objectList = document.querySelector("#object-list");
   const objectCount = document.querySelector("#object-count");
+  const colorControl = document.querySelector("#color-control");
+  const fillColorButton = document.querySelector("#fill-color-button");
+  const fillColorSwatch = document.querySelector("#fill-color-swatch");
+  const colorPopover = document.querySelector("#color-popover");
+  const colorPreview = document.querySelector("#color-preview");
+  const colorSlider = document.querySelector("#color-slider");
+  const saturationSlider = document.querySelector("#saturation-slider");
+  const brightnessSlider = document.querySelector("#brightness-slider");
+  const colorValue = document.querySelector("#color-value");
+  const saturationValue = document.querySelector("#saturation-value");
+  const brightnessValue = document.querySelector("#brightness-value");
+  const hexColorInput = document.querySelector("#hex-color-input");
 
   let shapes = [
-    { id: 1, name: "Shape 1", kind: "path", points: clonePoints(INITIAL_POINTS) },
+    {
+      id: 1,
+      name: "Shape 1",
+      kind: "path",
+      color: DEFAULT_FILL_COLOR,
+      points: clonePoints(INITIAL_POINTS),
+    },
   ];
   let activeShapeIndex = 0;
   let points = shapes[activeShapeIndex].points;
@@ -547,6 +611,7 @@ function initializeEditor() {
       const path = createSvgElement("path", {
         class: `shape-path${index === activeShapeIndex ? " is-active" : ""}`,
         d: createPathData(shape.points),
+        fill: shape.color ?? DEFAULT_FILL_COLOR,
         "data-shape-index": String(index),
         filter: index === activeShapeIndex ? "url(#shape-shadow)" : "none",
         "aria-label": shape.name,
@@ -564,6 +629,7 @@ function initializeEditor() {
       createSvgElement("path", {
         class: "draft-shape",
         d: createPathData(draftRectangle.points),
+        fill: shapes[activeShapeIndex]?.color ?? DEFAULT_FILL_COLOR,
       }),
     );
   }
@@ -585,7 +651,12 @@ function initializeEditor() {
       preview.className = "object-preview";
       preview.setAttribute("aria-hidden", "true");
       const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
-      previewSvg.append(createSvgElement("path", { d: createPathData(shape.points) }));
+      previewSvg.append(
+        createSvgElement("path", {
+          d: createPathData(shape.points),
+          fill: shape.color ?? DEFAULT_FILL_COLOR,
+        }),
+      );
       preview.append(previewSvg);
 
       const name = document.createElement("span");
@@ -598,6 +669,55 @@ function initializeEditor() {
       button.addEventListener("click", () => selectShape(index));
       objectList.append(button);
     });
+  }
+
+  function updateColorControls() {
+    const hex = normalizeHexColor(shapes[activeShapeIndex]?.color) ?? DEFAULT_FILL_COLOR;
+    const hsb = hexToHsb(hex);
+    const roundedColor = Math.round(hsb.color);
+    const roundedSaturation = Math.round(hsb.saturation);
+    const roundedBrightness = Math.round(hsb.brightness);
+
+    colorSlider.value = String(roundedColor);
+    saturationSlider.value = String(roundedSaturation);
+    brightnessSlider.value = String(roundedBrightness);
+    colorValue.textContent = String(roundedColor);
+    saturationValue.textContent = String(roundedSaturation);
+    brightnessValue.textContent = String(roundedBrightness);
+    hexColorInput.value = hex;
+    hexColorInput.setAttribute("aria-invalid", "false");
+    fillColorSwatch.style.backgroundColor = hex;
+    colorPreview.style.backgroundColor = hex;
+    fillColorButton.title = `Change fill color (${hex})`;
+    colorPopover.style.setProperty("--picker-hue-color", hsbToHex(hsb.color, 100, 100));
+    colorPopover.style.setProperty(
+      "--picker-bright-color",
+      hsbToHex(hsb.color, hsb.saturation, 100),
+    );
+  }
+
+  function setColorPopoverOpen(open) {
+    colorPopover.hidden = !open;
+    fillColorButton.setAttribute("aria-expanded", String(open));
+  }
+
+  function applySliderColor() {
+    const hex = hsbToHex(
+      Number(colorSlider.value),
+      Number(saturationSlider.value),
+      Number(brightnessSlider.value),
+    );
+    shapes[activeShapeIndex].color = hex;
+    render();
+  }
+
+  function applyHexColor() {
+    const hex = normalizeHexColor(hexColorInput.value);
+    hexColorInput.setAttribute("aria-invalid", String(!hex));
+    if (!hex) return false;
+    shapes[activeShapeIndex].color = hex;
+    render();
+    return true;
   }
 
   function renderSegmentHitTargets() {
@@ -706,6 +826,7 @@ function initializeEditor() {
     renderCanvasNodes();
     renderNodeList();
     renderObjectList();
+    updateColorControls();
     nodeXInput.disabled = !hasSingleSelection;
     nodeYInput.disabled = !hasSingleSelection;
     nodeXInput.value = hasSingleSelection ? formatNumber(selectedPoint.x) : "";
@@ -926,6 +1047,7 @@ function initializeEditor() {
       id: nextShapeId,
       name: shapeName,
       kind: "rectangle",
+      color: shapes[activeShapeIndex]?.color ?? DEFAULT_FILL_COLOR,
       points: rectanglePoints,
     });
     nextShapeId += 1;
@@ -1212,10 +1334,31 @@ function initializeEditor() {
   zoomOutButton.addEventListener("click", () => changeZoom(-1));
   zoomResetButton.addEventListener("click", resetZoom);
   zoomInButton.addEventListener("click", () => changeZoom(1));
+  fillColorButton.addEventListener("click", () => {
+    setColorPopoverOpen(colorPopover.hidden);
+  });
+  [colorSlider, saturationSlider, brightnessSlider].forEach((slider) => {
+    slider.addEventListener("input", applySliderColor);
+  });
+  hexColorInput.addEventListener("input", applyHexColor);
+  hexColorInput.addEventListener("blur", () => {
+    if (!applyHexColor()) updateColorControls();
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!colorPopover.hidden && !colorControl.contains(event.target)) {
+      setColorPopoverOpen(false);
+    }
+  });
 
   document.querySelector("#reset-shape").addEventListener("click", () => {
     shapes = [
-      { id: 1, name: "Shape 1", kind: "path", points: clonePoints(INITIAL_POINTS) },
+      {
+        id: 1,
+        name: "Shape 1",
+        kind: "path",
+        color: DEFAULT_FILL_COLOR,
+        points: clonePoints(INITIAL_POINTS),
+      },
     ];
     activeShapeIndex = 0;
     points = shapes[activeShapeIndex].points;
@@ -1229,6 +1372,12 @@ function initializeEditor() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !colorPopover.hidden) {
+      event.preventDefault();
+      setColorPopoverOpen(false);
+      fillColorButton.focus();
+      return;
+    }
     if (event.target.closest("input, button, a")) return;
 
     if (["Delete", "Backspace"].includes(event.key)) {
@@ -1255,6 +1404,7 @@ function initializeEditor() {
 }
 
 const VectorEditorCore = {
+  DEFAULT_FILL_COLOR,
   INITIAL_POINTS,
   absoluteHandle,
   clonePoints,
@@ -1269,7 +1419,10 @@ const VectorEditorCore = {
   createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
+  hexToHsb,
+  hsbToHex,
   midpoint,
+  normalizeHexColor,
   setPointType,
   splitSegment,
   updatePointHandle,
