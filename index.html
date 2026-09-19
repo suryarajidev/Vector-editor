@@ -48,17 +48,9 @@
         <aside class="asset-rail" aria-label="Objects">
           <div class="rail-heading">
             <span>Objects</span>
-            <span class="count-badge">1</span>
+            <span class="count-badge" id="object-count">1</span>
           </div>
-          <div class="object-card is-active" aria-label="Shape 1 selected">
-            <span class="object-preview" aria-hidden="true">
-              <svg viewBox="0 0 80 60">
-                <path d="M12 41 8 26l15-16 23-1 24 18-8 23-27 2Z" />
-              </svg>
-            </span>
-            <span class="object-name">Shape 1</span>
-            <span class="object-meta">Vector path</span>
-          </div>
+          <div class="object-list" id="object-list"></div>
         </aside>
 
         <section class="workspace" aria-label="Vector workspace">
@@ -125,6 +117,18 @@
                   <circle cx="19" cy="18" r="2" />
                 </svg>
               </button>
+              <button
+                class="tool-button"
+                id="tool-rectangle"
+                type="button"
+                aria-label="Rectangle tool"
+                aria-pressed="false"
+                title="Rectangle tool (hold Shift for a square)"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="5" y="6" width="14" height="12" rx="1" />
+                </svg>
+              </button>
               <span class="tool-divider" aria-hidden="true"></span>
               <button class="tool-button" id="tool-add-node" type="button" aria-label="Add node" title="Add node">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -165,7 +169,8 @@
                     height="200000"
                     fill="url(#canvas-checkerboard)"
                   />
-                  <path id="shape-path" filter="url(#shape-shadow)" />
+                  <g id="shape-layer" aria-label="Vector shapes"></g>
+                  <g id="draft-layer" aria-hidden="true"></g>
                   <g id="segment-hit-layer" aria-label="Path segments"></g>
                   <g id="handle-layer" aria-label="Curve handles"></g>
                   <g id="node-layer" aria-label="Path nodes"></g>

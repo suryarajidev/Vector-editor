@@ -6,7 +6,9 @@ const {
   closestTOnCubic,
   constrainTranslation,
   createArtworkSvg,
+  createDocumentSvg,
   createPathData,
+  createRectanglePoints,
   createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
@@ -132,6 +134,51 @@ assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
 assert.equal((svg.match(/<stop /g) ?? []).length, 4);
+
+const rectangle = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
+assert.deepEqual(
+  rectangle.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 100, y: 100 },
+    { x: 180, y: 100 },
+    { x: 180, y: 140 },
+    { x: 100, y: 140 },
+  ],
+);
+const square = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 }, true);
+assert.deepEqual(
+  square.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 100, y: 100 },
+    { x: 180, y: 100 },
+    { x: 180, y: 180 },
+    { x: 100, y: 180 },
+  ],
+);
+const reverseSquare = createRectanglePoints({ x: 300, y: 300 }, { x: 260, y: 210 }, true);
+assert.deepEqual(
+  reverseSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 300, y: 300 },
+    { x: 210, y: 300 },
+    { x: 210, y: 210 },
+    { x: 300, y: 210 },
+  ],
+);
+const boundedSquare = createRectanglePoints({ x: 600, y: 380 }, { x: 700, y: 500 }, true);
+assert.deepEqual(
+  boundedSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 600, y: 380 },
+    { x: 622, y: 380 },
+    { x: 622, y: 402 },
+    { x: 600, y: 402 },
+  ],
+);
+assert.equal(
+  (createDocumentSvg([{ points }, { points: rectangle }]).match(/<path /g) ?? []).length,
+  2,
+);
 
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
 assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });

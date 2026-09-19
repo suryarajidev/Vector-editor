@@ -17,6 +17,9 @@ The prototype currently supports:
 - Clicking the shape in Node mode to select every node
 - Shift-clicking nodes to build or reduce a multiple-node selection
 - Clicking the checkerboard or using Deselect to clear the node selection
+- Drawing additional rectangles with the Rectangle tool
+- Holding `Shift` while drawing to constrain a rectangle to a perfect square
+- Selecting created shapes from the Objects rail
 - Switching nodes between Corner, Curve, and Uneven modes
 - Dragging paired Bézier handles to shape smooth curves
 - Using Uneven curve nodes whose aligned handles keep independent lengths
@@ -28,7 +31,7 @@ The prototype currently supports:
 - Zooming from 50% to 400% with status-bar controls or `Ctrl`/`Command` + mouse wheel
 - Keeping node markers and curve-handle dots the same on-screen size at every zoom level
 - Resetting the example shape
-- Downloading the edited shape as an SVG with a non-scaling outline
+- Downloading all created shapes as an SVG with non-scaling outlines
 
 ## Test
 

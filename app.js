@@ -95,6 +95,36 @@ function constrainTranslation(
   };
 }
 
+function createRectanglePoints(
+  start,
+  end,
+  perfectSquare = false,
+  bounds = { left: 18, top: 18, right: 622, bottom: 402 },
+) {
+  const startX = clamp(start.x, bounds.left, bounds.right);
+  const startY = clamp(start.y, bounds.top, bounds.bottom);
+  let endX = clamp(end.x, bounds.left, bounds.right);
+  let endY = clamp(end.y, bounds.top, bounds.bottom);
+
+  if (perfectSquare) {
+    const directionX = endX < startX ? -1 : 1;
+    const directionY = endY < startY ? -1 : 1;
+    const requestedSize = Math.max(Math.abs(endX - startX), Math.abs(endY - startY));
+    const availableWidth = directionX > 0 ? bounds.right - startX : startX - bounds.left;
+    const availableHeight = directionY > 0 ? bounds.bottom - startY : startY - bounds.top;
+    const size = Math.min(requestedSize, availableWidth, availableHeight);
+    endX = startX + directionX * size;
+    endY = startY + directionY * size;
+  }
+
+  return [
+    { x: roundValue(startX), y: roundValue(startY), type: "corner", handleIn: null, handleOut: null },
+    { x: roundValue(endX), y: roundValue(startY), type: "corner", handleIn: null, handleOut: null },
+    { x: roundValue(endX), y: roundValue(endY), type: "corner", handleIn: null, handleOut: null },
+    { x: roundValue(startX), y: roundValue(endY), type: "corner", handleIn: null, handleOut: null },
+  ];
+}
+
 function absoluteHandle(point, handleName) {
   const handle = point[handleName];
   return handle
@@ -372,8 +402,13 @@ function updatePointHandle(point, handleName, nextHandle) {
   }
 }
 
-function createArtworkSvg(points) {
-  const pathData = createPathData(points);
+function createDocumentSvg(shapes) {
+  const paths = shapes
+    .map(
+      (shape) =>
+        `  <path d="${createPathData(shape.points)}" fill="url(#shapeGradient)" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
+    )
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img" aria-labelledby="title description">
@@ -387,15 +422,20 @@ function createArtworkSvg(points) {
       <stop offset="1" stop-color="#16d2b4"/>
     </linearGradient>
   </defs>
-  <path d="${pathData}" fill="url(#shapeGradient)" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+${paths}
 </svg>`;
+}
+
+function createArtworkSvg(points) {
+  return createDocumentSvg([{ points }]);
 }
 
 function initializeEditor() {
   const editorLayout = document.querySelector(".editor-layout");
   const inspector = document.querySelector(".inspector");
   const svg = document.querySelector("#editor-canvas");
-  const shapePath = document.querySelector("#shape-path");
+  const shapeLayer = document.querySelector("#shape-layer");
+  const draftLayer = document.querySelector("#draft-layer");
   const segmentHitLayer = document.querySelector("#segment-hit-layer");
   const handleLayer = document.querySelector("#handle-layer");
   const nodeLayer = document.querySelector("#node-layer");
@@ -407,9 +447,11 @@ function initializeEditor() {
   const unevenButton = document.querySelector("#node-type-uneven");
   const pointerToolButton = document.querySelector("#tool-pointer");
   const nodeToolButton = document.querySelector("#tool-node");
+  const rectangleToolButton = document.querySelector("#tool-rectangle");
   const addNodeButton = document.querySelector("#tool-add-node");
   const deselectButton = document.querySelector("#deselect-nodes");
   const deleteButton = document.querySelector("#delete-node");
+  const nodeActions = document.querySelector(".node-actions");
   const toolName = document.querySelector("#tool-name");
   const toolDescription = document.querySelector("#tool-description");
   const toolStatus = document.querySelector("#tool-status");
@@ -423,14 +465,22 @@ function initializeEditor() {
   const toast = document.querySelector("#toast");
   const canvasHint = document.querySelector("#canvas-hint");
   const canvasHintText = document.querySelector("#canvas-hint-text");
+  const objectList = document.querySelector("#object-list");
+  const objectCount = document.querySelector("#object-count");
 
-  let points = clonePoints(INITIAL_POINTS);
+  let shapes = [
+    { id: 1, name: "Shape 1", kind: "path", points: clonePoints(INITIAL_POINTS) },
+  ];
+  let activeShapeIndex = 0;
+  let points = shapes[activeShapeIndex].points;
+  let nextShapeId = 2;
   let selectedIndex = 0;
   let selectedIndices = new Set([0]);
   let activeTool = "node";
   let zoom = 1;
   let viewCenter = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
   let dragging = null;
+  let draftRectangle = null;
   let toastTimeout;
 
   function announce(message) {
@@ -478,6 +528,76 @@ function initializeEditor() {
     const element = document.createElementNS("http://www.w3.org/2000/svg", tagName);
     Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, value));
     return element;
+  }
+
+  function selectShape(index, { selectAll = true } = {}) {
+    activeShapeIndex = clamp(index, 0, shapes.length - 1);
+    points = shapes[activeShapeIndex].points;
+    selectedIndex = 0;
+    selectedIndices = selectAll
+      ? new Set(points.map((_, pointIndex) => pointIndex))
+      : new Set([0]);
+    render();
+  }
+
+  function renderShapes() {
+    shapeLayer.replaceChildren();
+
+    shapes.forEach((shape, index) => {
+      const path = createSvgElement("path", {
+        class: `shape-path${index === activeShapeIndex ? " is-active" : ""}`,
+        d: createPathData(shape.points),
+        "data-shape-index": String(index),
+        filter: index === activeShapeIndex ? "url(#shape-shadow)" : "none",
+        "aria-label": shape.name,
+      });
+      if (index === activeShapeIndex) path.id = "shape-path";
+      shapeLayer.append(path);
+    });
+  }
+
+  function renderDraftShape() {
+    draftLayer.replaceChildren();
+    if (!draftRectangle) return;
+
+    draftLayer.append(
+      createSvgElement("path", {
+        class: "draft-shape",
+        d: createPathData(draftRectangle.points),
+      }),
+    );
+  }
+
+  function renderObjectList() {
+    objectList.replaceChildren();
+    objectCount.textContent = String(shapes.length);
+
+    shapes.forEach((shape, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `object-card${index === activeShapeIndex ? " is-active" : ""}`;
+      button.setAttribute(
+        "aria-label",
+        `${shape.name}${index === activeShapeIndex ? " selected" : ""}`,
+      );
+
+      const preview = document.createElement("span");
+      preview.className = "object-preview";
+      preview.setAttribute("aria-hidden", "true");
+      const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
+      previewSvg.append(createSvgElement("path", { d: createPathData(shape.points) }));
+      preview.append(previewSvg);
+
+      const name = document.createElement("span");
+      name.className = "object-name";
+      name.textContent = shape.name;
+      const meta = document.createElement("span");
+      meta.className = "object-meta";
+      meta.textContent = shape.kind === "rectangle" ? "Rectangle" : "Vector path";
+      button.append(preview, name, meta);
+      button.addEventListener("click", () => selectShape(index));
+      objectList.append(button);
+    });
   }
 
   function renderSegmentHitTargets() {
@@ -579,11 +699,13 @@ function initializeEditor() {
       "viewBox",
       `${formatNumber(viewBox.x)} ${formatNumber(viewBox.y)} ${formatNumber(viewBox.width)} ${formatNumber(viewBox.height)}`,
     );
-    shapePath.setAttribute("d", createPathData(points));
+    renderShapes();
+    renderDraftShape();
     renderSegmentHitTargets();
     renderHandles();
     renderCanvasNodes();
     renderNodeList();
+    renderObjectList();
     nodeXInput.disabled = !hasSingleSelection;
     nodeYInput.disabled = !hasSingleSelection;
     nodeXInput.value = hasSingleSelection ? formatNumber(selectedPoint.x) : "";
@@ -615,33 +737,52 @@ function initializeEditor() {
     cornerButton.disabled = !hasSelection;
     curveButton.disabled = !hasSelection;
     unevenButton.disabled = !hasSelection;
-    addNodeButton.disabled = !hasSelection;
+    addNodeButton.disabled = !hasSelection || activeTool !== "node";
     deselectButton.disabled = !hasSelection;
     deleteButton.disabled = !hasSelection;
 
     const isNodeTool = activeTool === "node";
+    const isPointerTool = activeTool === "pointer";
+    const isRectangleTool = activeTool === "rectangle";
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
+    nodeActions.hidden = !isNodeTool;
     svg.classList.toggle("tool-node", isNodeTool);
-    svg.classList.toggle("tool-pointer", !isNodeTool);
+    svg.classList.toggle("tool-pointer", isPointerTool);
+    svg.classList.toggle("tool-rectangle", isRectangleTool);
     svg.classList.toggle("is-dragging-canvas", dragging?.kind === "pan");
-    pointerToolButton.classList.toggle("is-active", !isNodeTool);
+    pointerToolButton.classList.toggle("is-active", isPointerTool);
     nodeToolButton.classList.toggle("is-active", isNodeTool);
-    pointerToolButton.setAttribute("aria-pressed", String(!isNodeTool));
+    rectangleToolButton.classList.toggle("is-active", isRectangleTool);
+    pointerToolButton.setAttribute("aria-pressed", String(isPointerTool));
     nodeToolButton.setAttribute("aria-pressed", String(isNodeTool));
+    rectangleToolButton.setAttribute("aria-pressed", String(isRectangleTool));
     pointerToolButton.setAttribute(
       "aria-label",
-      isNodeTool ? "Pointer tool" : "Pointer tool selected",
+      isPointerTool ? "Pointer tool selected" : "Pointer tool",
     );
     nodeToolButton.setAttribute("aria-label", isNodeTool ? "Node tool selected" : "Node tool");
-    toolName.textContent = isNodeTool ? "Node tool" : "Pointer tool";
-    toolDescription.textContent = isNodeTool
-      ? "Edit one or more points on the shape"
-      : "Move the shape or pan the canvas";
-    toolStatus.textContent = isNodeTool ? "Node editing" : "Pointer editing";
-    canvasHintText.textContent = isNodeTool
-      ? "Drag canvas to pan · Shift-click nodes for multiple selection"
-      : "Drag canvas to pan · drag the shape to move it";
+    rectangleToolButton.setAttribute(
+      "aria-label",
+      isRectangleTool ? "Rectangle tool selected" : "Rectangle tool",
+    );
+
+    if (isNodeTool) {
+      toolName.textContent = "Node tool";
+      toolDescription.textContent = "Edit one or more points on the shape";
+      toolStatus.textContent = "Node editing";
+      canvasHintText.textContent = "Drag canvas to pan · Shift-click nodes for multiple selection";
+    } else if (isRectangleTool) {
+      toolName.textContent = "Rectangle tool";
+      toolDescription.textContent = "Drag to create a rectangle";
+      toolStatus.textContent = "Shape drawing";
+      canvasHintText.textContent = "Drag to draw · hold Shift for a perfect square";
+    } else {
+      toolName.textContent = "Pointer tool";
+      toolDescription.textContent = "Move the shape or pan the canvas";
+      toolStatus.textContent = "Pointer editing";
+      canvasHintText.textContent = "Drag canvas to pan · drag the shape to move it";
+    }
   }
 
   function changeZoom(direction) {
@@ -660,9 +801,15 @@ function initializeEditor() {
   function setActiveTool(tool) {
     activeTool = tool;
     dragging = null;
+    draftRectangle = null;
     canvasHint.hidden = false;
     render();
-    announce(tool === "node" ? "Node tool selected" : "Pointer tool selected");
+    const messages = {
+      node: "Node tool selected",
+      pointer: "Pointer tool selected",
+      rectangle: "Rectangle tool selected — hold Shift for a square",
+    };
+    announce(messages[tool]);
   }
 
   function pointFromPointer(event) {
@@ -702,6 +849,22 @@ function initializeEditor() {
     const pointer = pointFromPointer(event);
     if (!pointer) return;
 
+    if (dragging.kind === "rectangle") {
+      dragging.moved =
+        dragging.moved ||
+        Math.hypot(
+          event.clientX - dragging.startClient.x,
+          event.clientY - dragging.startClient.y,
+        ) >= 3;
+      draftRectangle = {
+        points: createRectanglePoints(dragging.startPointer, pointer, event.shiftKey),
+        perfectSquare: event.shiftKey,
+      };
+      canvasHint.hidden = true;
+      render();
+      return;
+    }
+
     if (dragging.kind === "handle") {
       const point = points[dragging.index];
       const handle = {
@@ -740,6 +903,38 @@ function initializeEditor() {
     canvasHint.hidden = true;
     selectNode(insertedIndex, { focus: true });
     announce(message.replace("{node}", String(insertedIndex + 1)));
+  }
+
+  function finishRectangle(dragState, pointer, perfectSquare) {
+    const rectanglePoints = createRectanglePoints(
+      dragState.startPointer,
+      pointer,
+      perfectSquare,
+    );
+    const width = Math.abs(rectanglePoints[1].x - rectanglePoints[0].x);
+    const height = Math.abs(rectanglePoints[3].y - rectanglePoints[0].y);
+    draftRectangle = null;
+
+    if (!dragState.moved || width < 3 || height < 3) {
+      render();
+      announce("Drag to create a rectangle");
+      return;
+    }
+
+    const shapeName = perfectSquare ? `Square ${nextShapeId}` : `Rectangle ${nextShapeId}`;
+    shapes.push({
+      id: nextShapeId,
+      name: shapeName,
+      kind: "rectangle",
+      points: rectanglePoints,
+    });
+    nextShapeId += 1;
+    activeShapeIndex = shapes.length - 1;
+    points = shapes[activeShapeIndex].points;
+    selectedIndex = 0;
+    selectedIndices = new Set(points.map((_, index) => index));
+    render();
+    announce(`Added ${perfectSquare ? "a square" : "a rectangle"}`);
   }
 
   function addMidpointNode() {
@@ -817,7 +1012,7 @@ function initializeEditor() {
   }
 
   function downloadCurrentSvg() {
-    const blob = new Blob([createArtworkSvg(points)], {
+    const blob = new Blob([createDocumentSvg(shapes)], {
       type: "image/svg+xml;charset=utf-8",
     });
     const objectUrl = URL.createObjectURL(blob);
@@ -840,9 +1035,22 @@ function initializeEditor() {
     const handle = activeTool === "node" ? event.target.closest?.("[data-handle]") : null;
     const node = activeTool === "node" ? event.target.closest?.("[data-node-index]") : null;
     const segment = event.target.closest?.("[data-segment-index]");
+    const shapeElement = event.target.closest?.("[data-shape-index]");
     event.preventDefault();
 
-    if (handle) {
+    if (activeTool === "rectangle") {
+      dragging = {
+        kind: "rectangle",
+        moved: false,
+        startPointer: pointer,
+        startClient: { x: event.clientX, y: event.clientY },
+      };
+      draftRectangle = {
+        points: createRectanglePoints(pointer, pointer, event.shiftKey),
+        perfectSquare: event.shiftKey,
+      };
+      render();
+    } else if (handle) {
       dragging = { kind: "handle", index: selectedIndex, handle: handle.dataset.handle };
     } else if (node) {
       const index = Number(node.dataset.nodeIndex);
@@ -864,7 +1072,14 @@ function initializeEditor() {
           y: points[pointIndex].y,
         })),
       };
-    } else if (event.target === shapePath || segment) {
+    } else if (shapeElement || segment) {
+      const shapeIndex = shapeElement
+        ? Number(shapeElement.dataset.shapeIndex)
+        : activeShapeIndex;
+      if (shapeIndex !== activeShapeIndex) {
+        activeShapeIndex = shapeIndex;
+        points = shapes[activeShapeIndex].points;
+      }
       const indices = points.map((_, index) => index);
       selectedIndices = new Set(indices);
       selectedIndex = 0;
@@ -913,8 +1128,18 @@ function initializeEditor() {
   svg.addEventListener("pointerup", (event) => {
     if (!dragging) return;
     const completedDrag = dragging;
+    const endPointer = pointFromPointer(event);
     dragging = null;
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+
+    if (completedDrag.kind === "rectangle") {
+      finishRectangle(
+        completedDrag,
+        endPointer ?? completedDrag.startPointer,
+        event.shiftKey,
+      );
+      return;
+    }
 
     if (completedDrag.kind === "pan" && !completedDrag.moved) {
       deselectAllNodes({ announceChange: true });
@@ -949,6 +1174,7 @@ function initializeEditor() {
 
   svg.addEventListener("pointercancel", () => {
     dragging = null;
+    draftRectangle = null;
     render();
   });
 
@@ -976,6 +1202,7 @@ function initializeEditor() {
   unevenButton.addEventListener("click", () => changeSelectedNodeType("asymmetric"));
   pointerToolButton.addEventListener("click", () => setActiveTool("pointer"));
   nodeToolButton.addEventListener("click", () => setActiveTool("node"));
+  rectangleToolButton.addEventListener("click", () => setActiveTool("rectangle"));
   addNodeButton.addEventListener("click", addMidpointNode);
   deselectButton.addEventListener("click", () =>
     deselectAllNodes({ announceChange: true }),
@@ -987,9 +1214,15 @@ function initializeEditor() {
   zoomInButton.addEventListener("click", () => changeZoom(1));
 
   document.querySelector("#reset-shape").addEventListener("click", () => {
-    points = clonePoints(INITIAL_POINTS);
+    shapes = [
+      { id: 1, name: "Shape 1", kind: "path", points: clonePoints(INITIAL_POINTS) },
+    ];
+    activeShapeIndex = 0;
+    points = shapes[activeShapeIndex].points;
+    nextShapeId = 2;
     selectedIndex = 0;
     selectedIndices = new Set([0]);
+    draftRectangle = null;
     canvasHint.hidden = false;
     render();
     announce("Shape reset");
@@ -1029,7 +1262,9 @@ const VectorEditorCore = {
   closestTOnCubic,
   constrainTranslation,
   createArtworkSvg,
+  createDocumentSvg,
   createPathData,
+  createRectanglePoints,
   createSegmentPathData,
   createZoomViewBox,
   cubicPointAt,

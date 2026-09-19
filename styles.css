@@ -188,6 +188,7 @@ a:focus-visible {
 }
 
 .asset-rail {
+  overflow-y: auto;
   padding: 16px 12px;
   border-right: 1px solid #303641;
 }
@@ -234,6 +235,21 @@ a:focus-visible {
   cursor: pointer;
 }
 
+.object-list {
+  display: grid;
+  gap: 10px;
+}
+
+.object-card:not(.is-active) {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.object-card:not(.is-active):hover {
+  background: #2a303a;
+  border-color: #46505d;
+}
+
 .object-preview {
   display: grid;
   aspect-ratio: 1.25;
@@ -258,7 +274,7 @@ a:focus-visible {
   fill: #7657e8;
   stroke: #aef3ff;
   stroke-linejoin: round;
-  stroke-width: 3;
+  stroke-width: 12;
 }
 
 .object-name {
@@ -339,6 +355,10 @@ a:focus-visible {
 .node-actions {
   display: flex;
   gap: 7px;
+}
+
+.node-actions[hidden] {
+  display: none;
 }
 
 .compact-button {
@@ -483,7 +503,7 @@ a:focus-visible {
   pointer-events: none;
 }
 
-#shape-path {
+.shape-path {
   fill: url(#shape-gradient);
   fill-opacity: 0.9;
   stroke: #263651;
@@ -492,6 +512,19 @@ a:focus-visible {
   stroke-width: 8;
   vector-effect: non-scaling-stroke;
   cursor: move;
+}
+
+.shape-path:not(.is-active) {
+  filter: none;
+}
+
+.draft-shape {
+  fill: rgb(45 183 223 / 22%);
+  stroke: #00aeda;
+  stroke-width: 2;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .segment-hit {
@@ -510,8 +543,17 @@ a:focus-visible {
 #editor-canvas.tool-pointer .node,
 #editor-canvas.tool-pointer .control-handle,
 #editor-canvas.tool-pointer .handle-guide,
-#editor-canvas.tool-pointer .segment-hit {
+#editor-canvas.tool-pointer .segment-hit,
+#editor-canvas.tool-rectangle .node,
+#editor-canvas.tool-rectangle .control-handle,
+#editor-canvas.tool-rectangle .handle-guide,
+#editor-canvas.tool-rectangle .segment-hit {
   display: none;
+}
+
+#editor-canvas.tool-rectangle,
+#editor-canvas.tool-rectangle .shape-path {
+  cursor: crosshair;
 }
 
 .handle-guide {
