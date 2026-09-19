@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const {
+  DEFAULT_FILL_COLOR,
   INITIAL_POINTS,
   clonePoints,
   closestPointOnSegment,
@@ -22,6 +23,8 @@ const {
 } = require("../app.js");
 
 const points = clonePoints(INITIAL_POINTS);
+
+assert.equal(DEFAULT_FILL_COLOR, "#eb8e0b");
 
 assert.equal(points.length, 7);
 assert.notEqual(points, INITIAL_POINTS);
@@ -136,7 +139,7 @@ assert.match(svg, /<title id="title">Node-edited vector shape<\/title>/);
 assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
-assert.match(svg, /fill="#7657e8"/);
+assert.match(svg, /fill="#eb8e0b"/);
 assert.equal((svg.match(/<linearGradient/g) ?? []).length, 0);
 
 assert.equal(normalizeHexColor("a329d6"), "#a329d6");

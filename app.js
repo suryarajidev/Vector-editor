@@ -16,7 +16,7 @@ const INITIAL_POINTS = Object.freeze([
 
 const CANVAS_WIDTH = 640;
 const CANVAS_HEIGHT = 420;
-const DEFAULT_FILL_COLOR = "#7657e8";
+const DEFAULT_FILL_COLOR = "#eb8e0b";
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
 function clonePoints(points) {
@@ -545,6 +545,7 @@ function initializeEditor() {
   let viewCenter = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
   let dragging = null;
   let draftRectangle = null;
+  let currentFillColor = DEFAULT_FILL_COLOR;
   let toastTimeout;
 
   function announce(message) {
@@ -708,6 +709,7 @@ function initializeEditor() {
       Number(brightnessSlider.value),
     );
     shapes[activeShapeIndex].color = hex;
+    currentFillColor = hex;
     render();
   }
 
@@ -716,6 +718,7 @@ function initializeEditor() {
     hexColorInput.setAttribute("aria-invalid", String(!hex));
     if (!hex) return false;
     shapes[activeShapeIndex].color = hex;
+    currentFillColor = hex;
     render();
     return true;
   }
@@ -1047,7 +1050,7 @@ function initializeEditor() {
       id: nextShapeId,
       name: shapeName,
       kind: "rectangle",
-      color: shapes[activeShapeIndex]?.color ?? DEFAULT_FILL_COLOR,
+      color: currentFillColor,
       points: rectanglePoints,
     });
     nextShapeId += 1;

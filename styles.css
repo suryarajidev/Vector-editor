@@ -395,7 +395,7 @@ a:focus-visible {
 .fill-color-swatch,
 .color-preview {
   display: block;
-  background: #7657e8;
+  background: #eb8e0b;
   border: 2px solid rgb(255 255 255 / 75%);
   box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
 }
