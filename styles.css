@@ -733,9 +733,9 @@ a:focus-visible {
   min-height: 32px;
   align-items: center;
   gap: 6px;
-  padding: 6px 9px;
+  padding: 6px 7px;
   color: #8e9cad;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 740;
   background: transparent;
   border: 0;

@@ -29,7 +29,8 @@ function clamp(value, minimum, maximum) {
 }
 
 function roundValue(value) {
-  return Math.round(value * 100) / 100;
+  const rounded = Math.round(value * 100) / 100;
+  return Object.is(rounded, -0) ? 0 : rounded;
 }
 
 function midpoint(first, second) {
@@ -250,7 +251,7 @@ function splitSegment(points, segmentIndex, amount) {
 
   points.splice(insertAt, 0, {
     ...roundedSplit,
-    type: "smooth",
+    type: "asymmetric",
     handleIn: {
       x: roundValue(secondLevelStart.x - roundedSplit.x),
       y: roundValue(secondLevelStart.y - roundedSplit.y),
@@ -274,20 +275,61 @@ function setPointType(points, index, type) {
     return;
   }
 
-  if (point.type === "smooth" && point.handleIn && point.handleOut) return;
+  if (!point.handleIn || !point.handleOut) {
+    const previous = points[(index - 1 + points.length) % points.length];
+    const next = points[(index + 1) % points.length];
+    const tangentX = next.x - previous.x;
+    const tangentY = next.y - previous.y;
+    const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+    const handleLength = Math.max(24, Math.min(distance(previous, point), distance(point, next)) * 0.34);
+    const handleX = roundValue((tangentX / tangentLength) * handleLength);
+    const handleY = roundValue((tangentY / tangentLength) * handleLength);
+    point.handleIn = { x: -handleX, y: -handleY };
+    point.handleOut = { x: handleX, y: handleY };
+  }
 
-  const previous = points[(index - 1 + points.length) % points.length];
-  const next = points[(index + 1) % points.length];
-  const tangentX = next.x - previous.x;
-  const tangentY = next.y - previous.y;
-  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
-  const handleLength = Math.max(24, Math.min(distance(previous, point), distance(point, next)) * 0.34);
-  const handleX = roundValue((tangentX / tangentLength) * handleLength);
-  const handleY = roundValue((tangentY / tangentLength) * handleLength);
+  if (type === "smooth") {
+    const incomingLength = Math.hypot(point.handleIn.x, point.handleIn.y);
+    const outgoingLength = Math.hypot(point.handleOut.x, point.handleOut.y);
+    const handleLength = (incomingLength + outgoingLength) / 2 || 24;
+    const source = outgoingLength > 0
+      ? point.handleOut
+      : { x: -point.handleIn.x, y: -point.handleIn.y };
+    const sourceLength = Math.hypot(source.x, source.y) || 1;
+    const handleX = roundValue((source.x / sourceLength) * handleLength);
+    const handleY = roundValue((source.y / sourceLength) * handleLength);
+    point.handleIn = { x: -handleX, y: -handleY };
+    point.handleOut = { x: handleX, y: handleY };
+  }
 
-  point.type = "smooth";
-  point.handleIn = { x: -handleX, y: -handleY };
-  point.handleOut = { x: handleX, y: handleY };
+  point.type = type;
+}
+
+function updatePointHandle(point, handleName, nextHandle) {
+  const handle = {
+    x: roundValue(nextHandle.x),
+    y: roundValue(nextHandle.y),
+  };
+  const oppositeName = handleName === "handleIn" ? "handleOut" : "handleIn";
+  point[handleName] = handle;
+
+  if (point.type === "smooth") {
+    point[oppositeName] = { x: -handle.x, y: -handle.y };
+    return;
+  }
+
+  if (point.type === "asymmetric") {
+    const handleLength = Math.hypot(handle.x, handle.y);
+    const opposite = point[oppositeName] ?? { x: -handle.x, y: -handle.y };
+    const oppositeLength = Math.hypot(opposite.x, opposite.y) || handleLength;
+
+    if (handleLength > 0) {
+      point[oppositeName] = {
+        x: roundValue((-handle.x / handleLength) * oppositeLength),
+        y: roundValue((-handle.y / handleLength) * oppositeLength),
+      };
+    }
+  }
 }
 
 function createArtworkSvg(points) {
@@ -320,6 +362,7 @@ function initializeEditor() {
   const nodeYInput = document.querySelector("#node-y");
   const cornerButton = document.querySelector("#node-type-corner");
   const curveButton = document.querySelector("#node-type-curve");
+  const unevenButton = document.querySelector("#node-type-uneven");
   const selectionPill = document.querySelector("#selection-pill");
   const nodeCount = document.querySelector("#node-count");
   const nodeSummary = document.querySelector("#node-summary");
@@ -370,7 +413,7 @@ function initializeEditor() {
   function renderHandles() {
     handleLayer.replaceChildren();
     const point = points[selectedIndex];
-    if (point.type !== "smooth" || !point.handleIn || !point.handleOut) return;
+    if (point.type === "corner" || !point.handleIn || !point.handleOut) return;
 
     const handleIn = absoluteHandle(point, "handleIn");
     const handleOut = absoluteHandle(point, "handleOut");
@@ -402,7 +445,7 @@ function initializeEditor() {
 
     points.forEach((point, index) => {
       const group = createSvgElement("g", {
-        class: `node${index === selectedIndex ? " is-selected" : ""}${point.type === "smooth" ? " is-curve" : ""}`,
+        class: `node${index === selectedIndex ? " is-selected" : ""}${point.type !== "corner" ? " is-curve" : ""}`,
         "data-node-index": String(index),
         role: "button",
         tabindex: "0",
@@ -444,14 +487,18 @@ function initializeEditor() {
     nodeYInput.value = formatNumber(selectedPoint.y);
     selectionPill.textContent = `Node ${selectedIndex + 1}`;
     nodeCount.textContent = String(points.length);
-    const curvedCount = points.filter((point) => point.type === "smooth").length;
+    const curvedCount = points.filter((point) => point.type !== "corner").length;
     nodeSummary.textContent = `${points.length} nodes · ${curvedCount} curved · Closed path`;
 
+    const isCorner = selectedPoint.type === "corner";
     const isCurve = selectedPoint.type === "smooth";
-    cornerButton.classList.toggle("is-active", !isCurve);
+    const isUneven = selectedPoint.type === "asymmetric";
+    cornerButton.classList.toggle("is-active", isCorner);
     curveButton.classList.toggle("is-active", isCurve);
-    cornerButton.setAttribute("aria-pressed", String(!isCurve));
+    unevenButton.classList.toggle("is-active", isUneven);
+    cornerButton.setAttribute("aria-pressed", String(isCorner));
     curveButton.setAttribute("aria-pressed", String(isCurve));
+    unevenButton.setAttribute("aria-pressed", String(isUneven));
   }
 
   function pointFromPointer(event) {
@@ -479,9 +526,7 @@ function initializeEditor() {
         x: roundValue(pointer.x - point.x),
         y: roundValue(pointer.y - point.y),
       };
-      const opposite = dragging.handle === "handleIn" ? "handleOut" : "handleIn";
-      point[dragging.handle] = handle;
-      point[opposite] = { x: -handle.x, y: -handle.y };
+      updatePointHandle(point, dragging.handle, handle);
     }
 
     canvasHint.hidden = true;
@@ -531,7 +576,12 @@ function initializeEditor() {
   function changeSelectedNodeType(type) {
     setPointType(points, selectedIndex, type);
     render();
-    announce(type === "smooth" ? "Curve handles added" : "Converted to a corner node");
+    const messages = {
+      corner: "Converted to a corner node",
+      smooth: "Equal curve handles enabled",
+      asymmetric: "Uneven curve handles enabled",
+    };
+    announce(messages[type]);
   }
 
   function downloadCurrentSvg() {
@@ -616,6 +666,7 @@ function initializeEditor() {
   nodeYInput.addEventListener("change", (event) => updateSelectedCoordinate("y", event.target.value));
   cornerButton.addEventListener("click", () => changeSelectedNodeType("corner"));
   curveButton.addEventListener("click", () => changeSelectedNodeType("smooth"));
+  unevenButton.addEventListener("click", () => changeSelectedNodeType("asymmetric"));
   document.querySelector("#tool-add-node").addEventListener("click", addMidpointNode);
   document.querySelector("#delete-node").addEventListener("click", deleteSelectedNode);
   document.querySelector("#download-svg").addEventListener("click", downloadCurrentSvg);
@@ -668,6 +719,7 @@ const VectorEditorCore = {
   midpoint,
   setPointType,
   splitSegment,
+  updatePointHandle,
 };
 
 if (typeof module !== "undefined" && module.exports) {

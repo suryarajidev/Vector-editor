@@ -11,6 +11,7 @@ const {
   midpoint,
   setPointType,
   splitSegment,
+  updatePointHandle,
 } = require("../app.js");
 
 const points = clonePoints(INITIAL_POINTS);
@@ -86,6 +87,20 @@ assert.deepEqual(convertible[1].handleIn, {
   x: -convertible[1].handleOut.x,
   y: -convertible[1].handleOut.y,
 });
+setPointType(convertible, 1, "asymmetric");
+const preservedIncomingLength = Math.hypot(
+  convertible[1].handleIn.x,
+  convertible[1].handleIn.y,
+);
+updatePointHandle(convertible[1], "handleOut", { x: 0, y: 60 });
+assert.deepEqual(convertible[1].handleOut, { x: 0, y: 60 });
+assert.equal(convertible[1].handleIn.x, 0);
+assert.ok(Math.abs(convertible[1].handleIn.y + preservedIncomingLength) < 0.01);
+setPointType(convertible, 1, "smooth");
+assert.deepEqual(convertible[1].handleIn, {
+  x: -convertible[1].handleOut.x,
+  y: -convertible[1].handleOut.y,
+});
 setPointType(convertible, 1, "corner");
 assert.equal(convertible[1].handleIn, null);
 assert.equal(convertible[1].handleOut, null);
@@ -100,7 +115,7 @@ assert.equal(splitCurve.length, 3);
 assert.deepEqual(splitCurve[1], {
   x: 50,
   y: 75,
-  type: "smooth",
+  type: "asymmetric",
   handleIn: { x: -25, y: 0 },
   handleOut: { x: 25, y: 0 },
 });
