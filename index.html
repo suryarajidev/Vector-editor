@@ -74,8 +74,8 @@
                 </svg>
               </span>
               <div>
-                <strong>Node tool</strong>
-                <span>Edit the points that make the shape</span>
+                <strong id="tool-name">Node tool</strong>
+                <span id="tool-description">Edit the points that make the shape</span>
               </div>
             </div>
 
@@ -91,18 +91,25 @@
 
           <div class="canvas-shell">
             <div class="tool-strip" aria-label="Tools">
-              <button class="tool-button" type="button" aria-label="Select tool coming later" title="Select tool coming later" disabled>
+              <button
+                class="tool-button"
+                id="tool-pointer"
+                type="button"
+                aria-label="Pointer tool"
+                aria-pressed="false"
+                title="Pointer tool"
+              >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m6 3 11 9-6 1-3 6L6 3Z" />
                 </svg>
               </button>
               <button
                 class="tool-button is-active"
+                id="tool-node"
                 type="button"
                 aria-label="Node tool selected"
                 aria-pressed="true"
                 title="Node tool"
-                disabled
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M5 6h14v12H5z" />
@@ -149,14 +156,14 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 2v13l3-3 3 7 3-2-3-7h5L8 2Z" />
                   </svg>
-                  Drag nodes &amp; handles · click a line to add
+                  <span id="canvas-hint-text">Drag empty canvas to pan · Shift-click nodes to select more</span>
                 </div>
               </div>
             </div>
           </div>
 
           <footer class="status-bar">
-            <span><span class="status-light" aria-hidden="true"></span> Node editing</span>
+            <span><span class="status-light" aria-hidden="true"></span><span id="tool-status">Node editing</span></span>
             <span id="node-summary">7 nodes · Closed path</span>
             <div class="zoom-controls" aria-label="Canvas zoom controls">
               <button class="zoom-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">

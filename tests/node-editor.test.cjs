@@ -4,6 +4,7 @@ const {
   clonePoints,
   closestPointOnSegment,
   closestTOnCubic,
+  constrainTranslation,
   createArtworkSvg,
   createPathData,
   createZoomViewBox,
@@ -135,5 +136,22 @@ assert.equal((svg.match(/<stop /g) ?? []).length, 4);
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
 assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });
 assert.deepEqual(createZoomViewBox(0.5), { x: -320, y: -210, width: 1280, height: 840 });
+assert.deepEqual(createZoomViewBox(2, 640, 420, 400, 300), {
+  x: 240,
+  y: 195,
+  width: 320,
+  height: 210,
+});
+assert.deepEqual(
+  constrainTranslation(
+    [
+      { x: 20, y: 30 },
+      { x: 600, y: 390 },
+    ],
+    -50,
+    40,
+  ),
+  { x: -2, y: 12 },
+);
 
 console.log("Node editor tests passed");

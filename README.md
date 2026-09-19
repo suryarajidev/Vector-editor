@@ -9,6 +9,11 @@ Open `index.html` directly in a browser. No server, build step, or package insta
 The prototype currently supports:
 
 - Selecting and dragging numbered path nodes
+- Switching between Pointer and Node tools
+- Dragging empty canvas space to pan with either tool
+- Dragging the filled shape to move the whole object
+- Clicking the shape in Node mode to select every node
+- Shift-clicking nodes to build or reduce a multiple-node selection
 - Switching nodes between Corner, Curve, and Uneven modes
 - Dragging paired Bézier handles to shape smooth curves
 - Using Uneven curve nodes whose aligned handles keep independent lengths

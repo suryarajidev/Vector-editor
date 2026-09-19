@@ -399,11 +399,6 @@ a:focus-visible {
   opacity: 0.42;
 }
 
-.tool-button.is-active:disabled {
-  cursor: default;
-  opacity: 1;
-}
-
 .tool-button svg {
   width: 20px;
   fill: none;
@@ -454,6 +449,11 @@ a:focus-visible {
   width: 100%;
   height: 100%;
   touch-action: none;
+  cursor: grab;
+}
+
+#editor-canvas.is-dragging-canvas {
+  cursor: grabbing;
 }
 
 #shape-path {
@@ -464,6 +464,7 @@ a:focus-visible {
   stroke-linejoin: round;
   stroke-width: 8;
   vector-effect: non-scaling-stroke;
+  cursor: move;
 }
 
 .segment-hit {
@@ -473,6 +474,17 @@ a:focus-visible {
   vector-effect: non-scaling-stroke;
   cursor: copy;
   pointer-events: stroke;
+}
+
+#editor-canvas.tool-pointer .segment-hit {
+  cursor: move;
+}
+
+#editor-canvas.tool-pointer .node,
+#editor-canvas.tool-pointer .control-handle,
+#editor-canvas.tool-pointer .handle-guide,
+#editor-canvas.tool-pointer .segment-hit {
+  display: none;
 }
 
 .handle-guide {
