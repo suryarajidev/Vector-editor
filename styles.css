@@ -443,10 +443,11 @@ a:focus-visible {
 
 .fill-type-grid {
   display: flex;
-  width: fit-content;
+  width: 100%;
   align-items: center;
-  gap: 5px;
-  padding: 5px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
   background: #1d2229;
   border: 1px solid #39414d;
   border-radius: 9px;
@@ -454,8 +455,8 @@ a:focus-visible {
 
 .fill-type-grid button {
   display: grid;
-  width: 38px;
-  height: 32px;
+  width: 44px;
+  height: 38px;
   padding: 5px;
   background: transparent;
   border: 1px solid transparent;
@@ -476,8 +477,8 @@ a:focus-visible {
 
 .fill-type-icon {
   display: block;
-  width: 25px;
-  height: 19px;
+  width: 31px;
+  height: 24px;
   overflow: visible;
   filter: drop-shadow(0 0 1px rgb(0 0 0 / 70%));
 }
@@ -508,8 +509,11 @@ a:focus-visible {
 
 .gradient-stop-controls {
   display: flex;
+  width: max-content;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 9px;
+  white-space: nowrap;
 }
 
 .gradient-stops button {
