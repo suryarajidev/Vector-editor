@@ -42,6 +42,7 @@ The prototype currently supports:
 - Nudging nodes with the arrow keys (`Shift` moves 10 pixels)
 - Zooming from 50% to 400% with status-bar controls or `Ctrl`/`Command` + mouse wheel
 - Keeping node markers and curve-handle dots the same on-screen size at every zoom level
+- Undoing artwork changes with `Ctrl+Z` or `Command+Z`
 - Resetting the example shape
 - Downloading all created shapes with their fills, outline colors, and non-scaling outline thicknesses as SVG
 

@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-contextual-add-node" />
+    <link rel="stylesheet" href="styles.css?v=20260920-undo" />
   </head>
   <body>
     <div class="app-shell">
@@ -470,7 +470,7 @@
             </svg>
             <div>
               <strong>Keyboard control</strong>
-              <span>Arrow keys nudge · Shift moves 10 px · Delete removes</span>
+              <span>Ctrl+Z undoes · Arrow keys nudge · Shift moves 10 px · Delete removes</span>
             </div>
           </div>
         </aside>
@@ -478,6 +478,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-contextual-add-node"></script>
+    <script src="app.js?v=20260920-undo"></script>
   </body>
 </html>

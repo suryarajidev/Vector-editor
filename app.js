@@ -20,6 +20,7 @@ const DEFAULT_FILL_COLOR = "#052d5c";
 const DEFAULT_OUTLINE_COLOR = "#ffffff";
 const DEFAULT_OUTLINE_WIDTH = 8;
 const MINIMUM_SHAPE_SIZE = 2;
+const UNDO_HISTORY_LIMIT = 100;
 const FILL_TYPES = Object.freeze(["solid", "horizontal", "vertical", "radial"]);
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
@@ -876,6 +877,83 @@ function initializeEditor() {
   let activeColorStop = 0;
   let objectSelected = false;
   let toastTimeout;
+  const undoStack = [];
+
+  function cloneShapeForHistory(shape) {
+    return {
+      ...shape,
+      fill: cloneFill(shape.fill),
+      outline: cloneFill(shape.outline),
+      points: clonePoints(shape.points),
+    };
+  }
+
+  function captureUndoState() {
+    return {
+      shapes: shapes.map(cloneShapeForHistory),
+      activeShapeIndex,
+      nextShapeId,
+      selectedIndex,
+      selectedIndices: [...selectedIndices],
+      currentFill: cloneFill(currentFill),
+      currentOutline: cloneFill(currentOutline),
+      currentOutlineWidth,
+      objectSelected,
+    };
+  }
+
+  function undoStateSignature(state) {
+    return JSON.stringify({
+      shapes: state.shapes,
+      nextShapeId: state.nextShapeId,
+      currentFill: state.currentFill,
+      currentOutline: state.currentOutline,
+      currentOutlineWidth: state.currentOutlineWidth,
+    });
+  }
+
+  function recordUndoState(previousState) {
+    if (!previousState) return false;
+    if (undoStateSignature(previousState) === undoStateSignature(captureUndoState())) {
+      return false;
+    }
+    undoStack.push(previousState);
+    if (undoStack.length > UNDO_HISTORY_LIMIT) undoStack.shift();
+    return true;
+  }
+
+  function restoreUndoState(state) {
+    shapes = state.shapes.map(cloneShapeForHistory);
+    activeShapeIndex = shapes.length
+      ? clamp(state.activeShapeIndex, 0, shapes.length - 1)
+      : -1;
+    points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
+    nextShapeId = state.nextShapeId;
+    selectedIndex = points.length
+      ? clamp(state.selectedIndex, 0, points.length - 1)
+      : 0;
+    selectedIndices = new Set(
+      state.selectedIndices.filter((index) => index >= 0 && index < points.length),
+    );
+    currentFill = cloneFill(state.currentFill);
+    currentOutline = cloneFill(state.currentOutline);
+    currentOutlineWidth = state.currentOutlineWidth;
+    objectSelected = Boolean(state.objectSelected && shapes.length);
+    dragging = null;
+    draftShape = null;
+    canvasHint.hidden = false;
+    render();
+  }
+
+  function undoLastChange() {
+    const previousState = undoStack.pop();
+    if (!previousState) {
+      announce("Nothing to undo");
+      return;
+    }
+    restoreUndoState(previousState);
+    announce("Undid last change");
+  }
 
   function announce(message) {
     window.clearTimeout(toastTimeout);
@@ -1180,6 +1258,7 @@ function initializeEditor() {
 
   function setPaintType(type) {
     if (!FILL_TYPES.includes(type)) return;
+    const previousState = captureUndoState();
     const shape = shapes[activeShapeIndex] ?? null;
     const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
     const isOutline = activePaintTarget === "outline";
@@ -1194,6 +1273,7 @@ function initializeEditor() {
     if (isOutline) currentOutline = cloneFill(paint);
     else currentFill = cloneFill(paint);
     if (type === "solid") activeColorStop = 0;
+    recordUndoState(previousState);
     render();
     const targetLabel = isOutline ? "outline" : "fill";
     const typeLabels = {
@@ -1211,6 +1291,7 @@ function initializeEditor() {
   }
 
   function applyColorToActiveStop(hex) {
+    const previousState = captureUndoState();
     const shape = shapes[activeShapeIndex] ?? null;
     const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
     const isOutline = activePaintTarget === "outline";
@@ -1224,16 +1305,19 @@ function initializeEditor() {
     if (shouldEditShape) shape[activePaintTarget] = paint;
     if (isOutline) currentOutline = cloneFill(paint);
     else currentFill = cloneFill(paint);
+    recordUndoState(previousState);
   }
 
   function applyOutlineWidth(value) {
     if (value === "") return false;
+    const previousState = captureUndoState();
     const width = normalizeOutlineWidth(value);
     const shape = shapes[activeShapeIndex] ?? null;
     const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
     if (shouldEditShape) shape.outlineWidth = width;
     currentOutlineWidth = width;
     outlineWidthInput.value = formatNumber(width);
+    recordUndoState(previousState);
     render();
     return true;
   }
@@ -1667,6 +1751,7 @@ function initializeEditor() {
     }
 
     if (dragging.kind === "handle") {
+      dragging.moved = true;
       const point = points[dragging.index];
       const handle = {
         x: roundValue(pointer.x - point.x),
@@ -1700,6 +1785,7 @@ function initializeEditor() {
   }
 
   function addNodeAt(segmentIndex, amount, message) {
+    const previousState = captureUndoState();
     const isClosed = shapes[activeShapeIndex]?.closed !== false;
     const insertedIndex = splitSegment(
       points,
@@ -1707,12 +1793,14 @@ function initializeEditor() {
       clamp(amount, 0.02, 0.98),
       isClosed,
     );
+    recordUndoState(previousState);
     canvasHint.hidden = true;
     selectNode(insertedIndex, { focus: true });
     announce(message.replace("{node}", String(insertedIndex + 1)));
   }
 
   function commitDrawnShape({ name, kind, points: shapePoints, closed, fillEnabled }) {
+    const previousState = captureUndoState();
     shapes.push({
       id: nextShapeId,
       name,
@@ -1729,6 +1817,7 @@ function initializeEditor() {
     points = shapes[activeShapeIndex].points;
     selectedIndex = 0;
     selectedIndices = new Set(points.map((_, index) => index));
+    recordUndoState(previousState);
     render();
   }
 
@@ -1828,12 +1917,14 @@ function initializeEditor() {
       return;
     }
 
+    const previousState = captureUndoState();
     indices
       .slice()
       .reverse()
       .forEach((index) => points.splice(index, 1));
     selectedIndex = Math.min(indices[0], points.length - 1);
     selectedIndices = new Set([selectedIndex]);
+    recordUndoState(previousState);
     render();
     announce(
       indices.length === 1
@@ -1848,6 +1939,7 @@ function initializeEditor() {
       return;
     }
 
+    const previousState = captureUndoState();
     const [deletedShape] = shapes.splice(activeShapeIndex, 1);
     if (shapes.length) {
       activeShapeIndex = Math.min(activeShapeIndex, shapes.length - 1);
@@ -1862,6 +1954,7 @@ function initializeEditor() {
       selectedIndices.clear();
       objectSelected = false;
     }
+    recordUndoState(previousState);
     render();
     announce(`Deleted ${deletedShape.name}`);
   }
@@ -1879,14 +1972,17 @@ function initializeEditor() {
     const parsedValue = Number(value);
     if (!Number.isFinite(parsedValue)) return;
 
+    const previousState = captureUndoState();
     const maximum = axis === "x" ? 622 : 402;
     points[selectedIndex][axis] = Math.round(clamp(parsedValue, 18, maximum));
+    recordUndoState(previousState);
     render();
   }
 
   function nudgeSelectedNode(horizontalChange, verticalChange) {
     const indices = selectedIndexList();
     if (indices.length === 0) return;
+    const previousState = captureUndoState();
     const positions = indices.map((index) => ({
       index,
       x: points[index].x,
@@ -1897,11 +1993,13 @@ function initializeEditor() {
       points[position.index].x = roundValue(position.x + translation.x);
       points[position.index].y = roundValue(position.y + translation.y);
     });
+    recordUndoState(previousState);
     render();
   }
 
   function nudgeActiveObject(horizontalChange, verticalChange) {
     if (!objectSelected || !points.length) return;
+    const previousState = captureUndoState();
     const positions = points.map((point, index) => ({
       index,
       x: point.x,
@@ -1912,6 +2010,7 @@ function initializeEditor() {
       points[position.index].x = roundValue(position.x + translation.x);
       points[position.index].y = roundValue(position.y + translation.y);
     });
+    recordUndoState(previousState);
     render();
   }
 
@@ -1920,7 +2019,9 @@ function initializeEditor() {
       announce("Select one or more nodes to change their type");
       return;
     }
+    const previousState = captureUndoState();
     selectedIndexList().forEach((index) => setPointType(points, index, type));
+    recordUndoState(previousState);
     render();
     const messages = {
       corner: "Converted selection to corner nodes",
@@ -1987,9 +2088,16 @@ function initializeEditor() {
         moved: false,
         handle: resizeControl.dataset.resizeHandle,
         startPoints: clonePoints(points),
+        undoState: captureUndoState(),
       };
     } else if (handle) {
-      dragging = { kind: "handle", index: selectedIndex, handle: handle.dataset.handle };
+      dragging = {
+        kind: "handle",
+        moved: false,
+        index: selectedIndex,
+        handle: handle.dataset.handle,
+        undoState: captureUndoState(),
+      };
     } else if (node) {
       const index = Number(node.dataset.nodeIndex);
       if (event.shiftKey) {
@@ -2009,6 +2117,7 @@ function initializeEditor() {
           x: points[pointIndex].x,
           y: points[pointIndex].y,
         })),
+        undoState: captureUndoState(),
       };
     } else if (shapeElement || segment) {
       const shapeIndex = shapeElement
@@ -2035,6 +2144,7 @@ function initializeEditor() {
           x: points[index].x,
           y: points[index].y,
         })),
+        undoState: captureUndoState(),
       };
     } else {
       const rect = svg.getBoundingClientRect();
@@ -2132,12 +2242,15 @@ function initializeEditor() {
       return;
     }
 
+    if (completedDrag.moved) recordUndoState(completedDrag.undoState);
     render();
   });
 
   svg.addEventListener("pointercancel", () => {
+    const cancelledDrag = dragging;
     dragging = null;
     draftShape = null;
+    if (cancelledDrag?.moved) recordUndoState(cancelledDrag.undoState);
     render();
   });
 
@@ -2232,6 +2345,7 @@ function initializeEditor() {
   });
 
   document.querySelector("#reset-shape").addEventListener("click", () => {
+    const previousState = captureUndoState();
     shapes = [
       {
         id: 1,
@@ -2257,11 +2371,22 @@ function initializeEditor() {
     activeColorStop = 0;
     draftShape = null;
     canvasHint.hidden = false;
+    recordUndoState(previousState);
     render();
     announce("Shape reset");
   });
 
   document.addEventListener("keydown", (event) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "z"
+    ) {
+      event.preventDefault();
+      undoLastChange();
+      return;
+    }
     if (event.key === "Escape" && !colorPopover.hidden) {
       event.preventDefault();
       setColorPopoverOpen(false);
