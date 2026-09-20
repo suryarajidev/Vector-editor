@@ -33,6 +33,10 @@ The prototype currently supports:
 - Drawing ellipses with the Circle tool and holding `Shift` for a perfect circle
 - Drawing open, two-node paths with the Line tool and the current outline settings
 - Selecting created shapes from the Objects rail
+- Organizing artwork into five layers, with Layer 1 always rendered in front of Layer 5
+- Editing only the active layer while keeping every layer visible
+- Dragging objects in the left rail to change their front-to-back order within a layer
+- Right-clicking an object to delete it or move it to another layer
 - Setting each shape's fill with Scratch-style Color, Saturation, and Brightness sliders or a synchronized hex code
 - Setting a separate outline color with the same solid and gradient color controls
 - Adjusting each object's non-scaling outline thickness, starting at white and 8 pixels

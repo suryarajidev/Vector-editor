@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-centered-skew" />
+    <link rel="stylesheet" href="styles.css?v=20260920-layers" />
   </head>
   <body>
     <div class="app-shell">
@@ -462,7 +462,7 @@
           </footer>
         </section>
 
-        <aside class="inspector" aria-labelledby="inspector-title">
+        <aside class="inspector node-inspector" aria-labelledby="inspector-title">
           <div class="inspector-heading">
             <div>
               <p class="eyebrow">Inspector</p>
@@ -524,10 +524,73 @@
             </div>
           </div>
         </aside>
+
+        <aside class="inspector layer-inspector" aria-labelledby="layer-inspector-title">
+          <div class="inspector-heading">
+            <div>
+              <p class="eyebrow">Artwork</p>
+              <h2 id="layer-inspector-title">Layers</h2>
+            </div>
+            <span class="selection-pill layer-selection-pill" id="active-layer-pill">Layer 1</span>
+          </div>
+
+          <div class="layer-list" id="layer-list" role="listbox" aria-label="Editable layer">
+            <button class="layer-row" type="button" data-layer="1" role="option">
+              <span class="layer-stack-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span><strong>Layer 1</strong><small>Front layer</small></span>
+              <span class="layer-object-count" data-layer-count="1">1</span>
+            </button>
+            <button class="layer-row" type="button" data-layer="2" role="option">
+              <span class="layer-stack-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span><strong>Layer 2</strong><small>Artwork layer</small></span>
+              <span class="layer-object-count" data-layer-count="2">0</span>
+            </button>
+            <button class="layer-row" type="button" data-layer="3" role="option">
+              <span class="layer-stack-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span><strong>Layer 3</strong><small>Artwork layer</small></span>
+              <span class="layer-object-count" data-layer-count="3">0</span>
+            </button>
+            <button class="layer-row" type="button" data-layer="4" role="option">
+              <span class="layer-stack-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span><strong>Layer 4</strong><small>Artwork layer</small></span>
+              <span class="layer-object-count" data-layer-count="4">0</span>
+            </button>
+            <button class="layer-row" type="button" data-layer="5" role="option">
+              <span class="layer-stack-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span><strong>Layer 5</strong><small>Back layer</small></span>
+              <span class="layer-object-count" data-layer-count="5">0</span>
+            </button>
+          </div>
+
+          <div class="layer-help-card">
+            <span class="layer-help-icon" aria-hidden="true">↕</span>
+            <div>
+              <strong>Stacking order</strong>
+              <span>Drag objects in the left rail to reorder them. Layer 1 always stays in front.</span>
+            </div>
+          </div>
+        </aside>
       </main>
     </div>
 
+    <div class="object-context-menu" id="object-context-menu" role="menu" aria-label="Object options" hidden>
+      <div class="context-menu-title" id="context-object-name">Object</div>
+      <button class="context-delete" id="context-delete-object" type="button" role="menuitem">
+        <span aria-hidden="true">−</span>
+        Delete
+      </button>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-label">Move to layer</div>
+      <div class="context-layer-grid" role="group" aria-label="Move object to layer">
+        <button type="button" data-context-layer="1">1</button>
+        <button type="button" data-context-layer="2">2</button>
+        <button type="button" data-context-layer="3">3</button>
+        <button type="button" data-context-layer="4">4</button>
+        <button type="button" data-context-layer="5">5</button>
+      </div>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-centered-skew"></script>
+    <script src="app.js?v=20260920-layers"></script>
   </body>
 </html>

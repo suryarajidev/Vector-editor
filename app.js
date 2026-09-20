@@ -21,6 +21,8 @@ const DEFAULT_OUTLINE_COLOR = "#ffffff";
 const DEFAULT_OUTLINE_WIDTH = 8;
 const MINIMUM_SHAPE_SIZE = 2;
 const UNDO_HISTORY_LIMIT = 100;
+const LAYER_COUNT = 5;
+const DEFAULT_LAYER = 1;
 const FILL_TYPES = Object.freeze(["solid", "horizontal", "vertical", "radial"]);
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
@@ -44,6 +46,63 @@ function duplicateShape(shape, id) {
     outline: cloneFill(shape.outline),
     points: clonePoints(shape.points),
   };
+}
+
+function normalizeLayer(value) {
+  const layer = Number.parseInt(value, 10);
+  return Number.isFinite(layer)
+    ? clamp(layer, 1, LAYER_COUNT)
+    : DEFAULT_LAYER;
+}
+
+function shapeRenderOrder(shapes) {
+  return shapes
+    .map((shape, index) => ({ shape, index }))
+    .sort((first, second) => {
+      const layerDifference =
+        normalizeLayer(second.shape.layer) - normalizeLayer(first.shape.layer);
+      return layerDifference || first.index - second.index;
+    });
+}
+
+function reorderShapesInLayer(shapes, sourceId, targetId, insertAfter = false) {
+  const source = shapes.find((shape) => shape.id === sourceId);
+  const target = shapes.find((shape) => shape.id === targetId);
+  if (!source || !target || source.id === target.id) return [...shapes];
+
+  const layer = normalizeLayer(source.layer);
+  if (normalizeLayer(target.layer) !== layer) return [...shapes];
+
+  const layerPositions = [];
+  const frontToBack = [];
+  shapes.forEach((shape, index) => {
+    if (normalizeLayer(shape.layer) !== layer) return;
+    layerPositions.push(index);
+    frontToBack.unshift(shape);
+  });
+
+  const sourcePosition = frontToBack.findIndex((shape) => shape.id === sourceId);
+  if (sourcePosition < 0) return [...shapes];
+  const [movedShape] = frontToBack.splice(sourcePosition, 1);
+  const targetPosition = frontToBack.findIndex((shape) => shape.id === targetId);
+  if (targetPosition < 0) return [...shapes];
+  frontToBack.splice(targetPosition + (insertAfter ? 1 : 0), 0, movedShape);
+
+  const reordered = [...shapes];
+  frontToBack.reverse().forEach((shape, position) => {
+    reordered[layerPositions[position]] = shape;
+  });
+  return reordered;
+}
+
+function moveShapeToLayer(shapes, shapeId, targetLayer) {
+  const index = shapes.findIndex((shape) => shape.id === shapeId);
+  if (index < 0) return [...shapes];
+  const movedShape = {
+    ...shapes[index],
+    layer: normalizeLayer(targetLayer),
+  };
+  return [...shapes.slice(0, index), ...shapes.slice(index + 1), movedShape];
 }
 
 function clamp(value, minimum, maximum) {
@@ -901,8 +960,9 @@ function updatePointHandle(point, handleName, nextHandle) {
 }
 
 function createDocumentSvg(shapes) {
-  const normalizedShapes = shapes.map((shape) => ({
+  const normalizedShapes = shapeRenderOrder(shapes).map(({ shape }) => ({
     ...shape,
+    layer: normalizeLayer(shape.layer),
     fill: normalizeFill(shape.fill, shape.color),
     outline: normalizeFill(
       shape.outline,
@@ -946,7 +1006,8 @@ function createArtworkSvg(points) {
 
 function initializeEditor() {
   const editorLayout = document.querySelector(".editor-layout");
-  const inspector = document.querySelector(".inspector");
+  const inspector = document.querySelector(".node-inspector");
+  const layerInspector = document.querySelector(".layer-inspector");
   const svg = document.querySelector("#editor-canvas");
   const shapePaintDefs = document.querySelector("#shape-paint-defs");
   const shapeLayer = document.querySelector("#shape-layer");
@@ -986,6 +1047,13 @@ function initializeEditor() {
   const canvasHintText = document.querySelector("#canvas-hint-text");
   const objectList = document.querySelector("#object-list");
   const objectCount = document.querySelector("#object-count");
+  const activeLayerPill = document.querySelector("#active-layer-pill");
+  const layerButtons = [...document.querySelectorAll("[data-layer]")];
+  const layerCountBadges = [...document.querySelectorAll("[data-layer-count]")];
+  const objectContextMenu = document.querySelector("#object-context-menu");
+  const contextObjectName = document.querySelector("#context-object-name");
+  const contextDeleteObjectButton = document.querySelector("#context-delete-object");
+  const contextLayerButtons = [...document.querySelectorAll("[data-context-layer]")];
   const colorControl = document.querySelector("#color-control");
   const transformControls = document.querySelector("#transform-controls");
   const rotateOnlyControls = [...document.querySelectorAll("[data-rotate-only]")];
@@ -1021,6 +1089,7 @@ function initializeEditor() {
     {
       id: 1,
       name: "Shape 1",
+      layer: DEFAULT_LAYER,
       kind: "path",
       closed: true,
       fill: normalizeFill(),
@@ -1030,6 +1099,7 @@ function initializeEditor() {
     },
   ];
   let activeShapeIndex = 0;
+  let activeLayer = DEFAULT_LAYER;
   let points = shapes[activeShapeIndex].points;
   let nextShapeId = 2;
   let selectedIndex = 0;
@@ -1045,6 +1115,9 @@ function initializeEditor() {
   let activePaintTarget = "fill";
   let activeColorStop = 0;
   let objectSelected = false;
+  let contextShapeId = null;
+  let objectDrag = null;
+  let suppressObjectClickUntil = 0;
   let toastTimeout;
   const undoStack = [];
 
@@ -1061,6 +1134,7 @@ function initializeEditor() {
     return {
       shapes: shapes.map(cloneShapeForHistory),
       activeShapeIndex,
+      activeLayer,
       nextShapeId,
       selectedIndex,
       selectedIndices: [...selectedIndices],
@@ -1092,10 +1166,18 @@ function initializeEditor() {
   }
 
   function restoreUndoState(state) {
-    shapes = state.shapes.map(cloneShapeForHistory);
-    activeShapeIndex = shapes.length
+    shapes = state.shapes.map((shape) => ({
+      ...cloneShapeForHistory(shape),
+      layer: normalizeLayer(shape.layer),
+    }));
+    activeLayer = normalizeLayer(state.activeLayer);
+    const requestedShapeIndex = shapes.length
       ? clamp(state.activeShapeIndex, 0, shapes.length - 1)
       : -1;
+    activeShapeIndex = requestedShapeIndex >= 0 &&
+      normalizeLayer(shapes[requestedShapeIndex].layer) === activeLayer
+      ? requestedShapeIndex
+      : frontmostShapeIndexInLayer(activeLayer);
     points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
     nextShapeId = state.nextShapeId;
     selectedIndex = points.length
@@ -1107,9 +1189,10 @@ function initializeEditor() {
     currentFill = cloneFill(state.currentFill);
     currentOutline = cloneFill(state.currentOutline);
     currentOutlineWidth = state.currentOutlineWidth;
-    objectSelected = Boolean(state.objectSelected && shapes.length);
+    objectSelected = Boolean(state.objectSelected && activeShapeIndex >= 0);
     dragging = null;
     draftShape = null;
+    closeObjectContextMenu();
     canvasHint.hidden = false;
     render();
   }
@@ -1210,9 +1293,28 @@ function initializeEditor() {
     }
   }
 
+  function frontmostShapeIndexInLayer(layer) {
+    const normalizedLayer = normalizeLayer(layer);
+    for (let index = shapes.length - 1; index >= 0; index -= 1) {
+      if (normalizeLayer(shapes[index].layer) === normalizedLayer) return index;
+    }
+    return -1;
+  }
+
+  function shapeIsEditable(index) {
+    return Boolean(
+      shapes[index] && normalizeLayer(shapes[index].layer) === activeLayer,
+    );
+  }
+
   function selectShape(index, { selectAll = true } = {}) {
     if (!shapes.length) return;
-    activeShapeIndex = clamp(index, 0, shapes.length - 1);
+    const nextIndex = clamp(index, 0, shapes.length - 1);
+    if (!shapeIsEditable(nextIndex)) {
+      announce(`Switch to Layer ${normalizeLayer(shapes[nextIndex].layer)} to edit ${shapes[nextIndex].name}`);
+      return;
+    }
+    activeShapeIndex = nextIndex;
     points = shapes[activeShapeIndex].points;
     objectSelected = true;
     selectedIndex = 0;
@@ -1225,21 +1327,24 @@ function initializeEditor() {
   function renderShapes() {
     shapeLayer.replaceChildren();
 
-    shapes.forEach((shape, index) => {
+    shapeRenderOrder(shapes).forEach(({ shape, index }) => {
+      const isEditable = normalizeLayer(shape.layer) === activeLayer;
       const isActive =
-        index === activeShapeIndex && (activeTool !== "pointer" || objectSelected);
+        isEditable &&
+        index === activeShapeIndex &&
+        (activeTool !== "pointer" || objectSelected);
       const path = createSvgElement("path", {
-        class: `shape-path${isActive ? " is-active" : ""}`,
+        class: `shape-path${isActive ? " is-active" : ""}${isEditable ? "" : " is-layer-locked"}`,
         d: createPathData(shape.points, shape.closed !== false),
         fill: shape.fillEnabled === false
           ? "none"
           : fillPaintValue(shape.fill, `shape-fill-${index}`),
         stroke: fillPaintValue(shape.outline, `shape-outline-${index}`),
         "stroke-width": formatNumber(shape.outlineWidth),
-        "data-shape-index": String(index),
         filter: isActive ? "url(#shape-shadow)" : "none",
-        "aria-label": shape.name,
+        "aria-label": `${shape.name}, Layer ${normalizeLayer(shape.layer)}${isEditable ? "" : ", locked"}`,
       });
+      if (isEditable) path.setAttribute("data-shape-index", String(index));
       if (index === activeShapeIndex) path.id = "shape-path";
       shapeLayer.append(path);
     });
@@ -1266,64 +1371,203 @@ function initializeEditor() {
     objectList.replaceChildren();
     objectCount.textContent = String(shapes.length);
 
-    shapes.forEach((shape, index) => {
-      const isActive =
-        index === activeShapeIndex && (activeTool !== "pointer" || objectSelected);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `object-card${isActive ? " is-active" : ""}`;
-      button.setAttribute(
-        "aria-label",
-        `${shape.name}${isActive ? " selected" : ""}`,
-      );
+    for (let layer = 1; layer <= LAYER_COUNT; layer += 1) {
+      const layerEntries = shapes
+        .map((shape, index) => ({ shape, index }))
+        .filter(({ shape }) => normalizeLayer(shape.layer) === layer)
+        .reverse();
+      if (!layerEntries.length) continue;
 
-      const preview = document.createElement("span");
-      preview.className = "object-preview";
-      preview.setAttribute("aria-hidden", "true");
-      const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
-      const previewGradientId = `object-preview-fill-${shape.id}`;
-      const previewOutlineGradientId = `object-preview-outline-${shape.id}`;
-      const previewGradient = createGradientElement(shape.fill, previewGradientId);
-      const previewOutlineGradient = createGradientElement(
-        shape.outline,
-        previewOutlineGradientId,
-      );
-      if (previewGradient || previewOutlineGradient) {
-        const previewDefs = createSvgElement("defs");
-        if (previewGradient) previewDefs.append(previewGradient);
-        if (previewOutlineGradient) previewDefs.append(previewOutlineGradient);
-        previewSvg.append(previewDefs);
-      }
-      previewSvg.append(
-        createSvgElement("path", {
-          d: createPathData(shape.points, shape.closed !== false),
-          fill: shape.fillEnabled === false
-            ? "none"
-            : fillPaintValue(shape.fill, previewGradientId),
-          stroke: fillPaintValue(shape.outline, previewOutlineGradientId),
-          "stroke-width": formatNumber(shape.outlineWidth),
-          "stroke-linecap": "round",
-          "stroke-linejoin": "round",
-          "vector-effect": "non-scaling-stroke",
-        }),
-      );
-      preview.append(previewSvg);
+      const group = document.createElement("section");
+      group.className = `object-layer-group${layer === activeLayer ? " is-active-layer" : ""}`;
+      group.setAttribute("aria-label", `Layer ${layer} objects, front to back`);
+      const groupHeading = document.createElement("div");
+      groupHeading.className = "object-layer-heading";
+      groupHeading.innerHTML = `<span>Layer ${layer}</span><span>${layerEntries.length}</span>`;
+      group.append(groupHeading);
 
-      const name = document.createElement("span");
-      name.className = "object-name";
-      name.textContent = shape.name;
-      const meta = document.createElement("span");
-      meta.className = "object-meta";
-      const kindLabels = {
-        rectangle: "Rectangle",
-        ellipse: "Ellipse",
-        line: "Line",
-      };
-      meta.textContent = kindLabels[shape.kind] ?? "Vector path";
-      button.append(preview, name, meta);
-      button.addEventListener("click", () => selectShape(index));
-      objectList.append(button);
+      layerEntries.forEach(({ shape, index }) => {
+        const isEditable = layer === activeLayer;
+        const isActive =
+          isEditable &&
+          index === activeShapeIndex &&
+          (activeTool !== "pointer" || objectSelected);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.draggable = String(isEditable);
+        button.dataset.objectId = String(shape.id);
+        button.className = `object-card${isActive ? " is-active" : ""}${isEditable ? "" : " is-layer-locked"}`;
+        button.setAttribute(
+          "aria-label",
+          `${shape.name}, Layer ${layer}${isActive ? ", selected" : ""}${isEditable ? "" : ", locked"}`,
+        );
+
+        const preview = document.createElement("span");
+        preview.className = "object-preview";
+        preview.setAttribute("aria-hidden", "true");
+        const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
+        const previewGradientId = `object-preview-fill-${shape.id}`;
+        const previewOutlineGradientId = `object-preview-outline-${shape.id}`;
+        const previewGradient = createGradientElement(shape.fill, previewGradientId);
+        const previewOutlineGradient = createGradientElement(
+          shape.outline,
+          previewOutlineGradientId,
+        );
+        if (previewGradient || previewOutlineGradient) {
+          const previewDefs = createSvgElement("defs");
+          if (previewGradient) previewDefs.append(previewGradient);
+          if (previewOutlineGradient) previewDefs.append(previewOutlineGradient);
+          previewSvg.append(previewDefs);
+        }
+        previewSvg.append(
+          createSvgElement("path", {
+            d: createPathData(shape.points, shape.closed !== false),
+            fill: shape.fillEnabled === false
+              ? "none"
+              : fillPaintValue(shape.fill, previewGradientId),
+            stroke: fillPaintValue(shape.outline, previewOutlineGradientId),
+            "stroke-width": formatNumber(shape.outlineWidth),
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+        preview.append(previewSvg);
+
+        const name = document.createElement("span");
+        name.className = "object-name";
+        name.textContent = shape.name;
+        const meta = document.createElement("span");
+        meta.className = "object-meta";
+        const kindLabels = {
+          rectangle: "Rectangle",
+          ellipse: "Ellipse",
+          line: "Line",
+        };
+        meta.textContent = `${kindLabels[shape.kind] ?? "Vector path"}${isEditable ? "" : " · Locked"}`;
+        button.append(preview, name, meta);
+        button.addEventListener("click", () => {
+          if (performance.now() < suppressObjectClickUntil) return;
+          selectShape(index);
+        });
+        button.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          openObjectContextMenu(shape.id, event.clientX, event.clientY);
+        });
+        button.addEventListener("pointerdown", (event) => {
+          if (!isEditable || event.button !== 0) return;
+          objectDrag = {
+            shapeId: shape.id,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            moved: false,
+            source: button,
+            targetId: null,
+            insertAfter: false,
+          };
+          button.setPointerCapture(event.pointerId);
+        });
+        button.addEventListener("pointermove", (event) => {
+          if (!objectDrag || objectDrag.pointerId !== event.pointerId) return;
+          if (!objectDrag.moved && Math.hypot(
+            event.clientX - objectDrag.startX,
+            event.clientY - objectDrag.startY,
+          ) < 5) return;
+          event.preventDefault();
+          objectDrag.moved = true;
+          objectDrag.source.classList.add("is-dragging");
+          clearObjectDropIndicators();
+          const targetCard = document
+            .elementFromPoint(event.clientX, event.clientY)
+            ?.closest("[data-object-id]");
+          const targetShape = targetCard
+            ? shapes.find(({ id }) => id === Number(targetCard.dataset.objectId))
+            : null;
+          if (!targetShape || targetShape.id === objectDrag.shapeId ||
+              normalizeLayer(targetShape.layer) !== activeLayer) {
+            objectDrag.targetId = null;
+            return;
+          }
+          objectDrag.targetId = targetShape.id;
+          objectDrag.insertAfter =
+            event.clientY >= targetCard.getBoundingClientRect().top + targetCard.offsetHeight / 2;
+          targetCard.classList.add(objectDrag.insertAfter ? "drop-after" : "drop-before");
+        });
+        button.addEventListener("pointerup", (event) => {
+          finishObjectCardDrag(event.pointerId);
+        });
+        button.addEventListener("pointercancel", (event) => {
+          finishObjectCardDrag(event.pointerId, true);
+        });
+        group.append(button);
+      });
+      objectList.append(group);
+    }
+  }
+
+  function renderLayerList() {
+    activeLayerPill.textContent = `Layer ${activeLayer}`;
+    layerButtons.forEach((button) => {
+      const layer = normalizeLayer(button.dataset.layer);
+      const isActive = layer === activeLayer;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+      button.setAttribute("aria-label", `Layer ${layer}, ${shapes.filter((shape) => normalizeLayer(shape.layer) === layer).length} objects${isActive ? ", editable" : ""}`);
     });
+    layerCountBadges.forEach((badge) => {
+      const layer = normalizeLayer(badge.dataset.layerCount);
+      badge.textContent = String(
+        shapes.filter((shape) => normalizeLayer(shape.layer) === layer).length,
+      );
+    });
+  }
+
+  function clearObjectDropIndicators() {
+    objectList.querySelectorAll(".drop-before, .drop-after")
+      .forEach((card) => card.classList.remove("drop-before", "drop-after"));
+  }
+
+  function finishObjectCardDrag(pointerId, cancelled = false) {
+    if (!objectDrag || objectDrag.pointerId !== pointerId) return;
+    const completedDrag = objectDrag;
+    objectDrag = null;
+    if (completedDrag.source.hasPointerCapture(pointerId)) {
+      completedDrag.source.releasePointerCapture(pointerId);
+    }
+    completedDrag.source.classList.remove("is-dragging");
+    clearObjectDropIndicators();
+    if (!completedDrag.moved) return;
+    suppressObjectClickUntil = performance.now() + 250;
+    if (!cancelled && completedDrag.targetId !== null) {
+      reorderObjectInLayer(
+        completedDrag.shapeId,
+        completedDrag.targetId,
+        completedDrag.insertAfter,
+      );
+    }
+  }
+
+  function closeObjectContextMenu() {
+    objectContextMenu.hidden = true;
+    contextShapeId = null;
+  }
+
+  function openObjectContextMenu(shapeId, clientX, clientY) {
+    const shape = shapes.find(({ id }) => id === shapeId);
+    if (!shape) return;
+    contextShapeId = shapeId;
+    contextObjectName.textContent = shape.name;
+    contextLayerButtons.forEach((button) => {
+      const layer = normalizeLayer(button.dataset.contextLayer);
+      button.disabled = layer === normalizeLayer(shape.layer);
+      button.setAttribute("aria-label", `Move ${shape.name} to Layer ${layer}`);
+    });
+    objectContextMenu.hidden = false;
+    const menuBounds = objectContextMenu.getBoundingClientRect();
+    objectContextMenu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - menuBounds.width - 8))}px`;
+    objectContextMenu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - menuBounds.height - 8))}px`;
+    contextDeleteObjectButton.focus();
   }
 
   function updateColorControls() {
@@ -1701,6 +1945,7 @@ function initializeEditor() {
     renderTransformBox();
     renderNodeList();
     renderObjectList();
+    renderLayerList();
     updateColorControls();
     nodeXInput.disabled = !hasSingleSelection;
     nodeYInput.disabled = !hasSingleSelection;
@@ -1715,12 +1960,13 @@ function initializeEditor() {
         : `${selectedIndices.size} nodes`;
     nodeCount.textContent = String(points.length);
     const curvedCount = points.filter((point) => point.type !== "corner").length;
-    const pathDescription = shapes[activeShapeIndex]?.closed === false
+    const activeShape = shapes[activeShapeIndex] ?? null;
+    const pathDescription = activeShape?.closed === false
       ? "Open path"
       : "Closed path";
-    nodeSummary.textContent = shapes.length
-      ? `${points.length} nodes · ${curvedCount} curved · ${pathDescription}`
-      : "No objects";
+    nodeSummary.textContent = activeShape
+      ? `${points.length} nodes · ${curvedCount} curved · ${pathDescription} · Layer ${activeLayer}`
+      : `Layer ${activeLayer} is empty`;
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
     zoomInButton.disabled = zoom === ZOOM_LEVELS.at(-1);
@@ -1749,7 +1995,8 @@ function initializeEditor() {
     const isLineTool = activeTool === "line";
     const isDrawingTool = isRectangleTool || isCircleTool || isLineTool;
     const isObjectTool = isPointerTool || isRotateTool;
-    const hasObjectSelection = objectSelected && shapes.length > 0;
+    const hasObjectSelection =
+      objectSelected && activeShapeIndex >= 0 && shapeIsEditable(activeShapeIndex);
     addNodeButton.hidden = !isNodeTool;
     colorControl.hidden = isRotateTool;
     transformControls.hidden = !isObjectTool;
@@ -1768,14 +2015,17 @@ function initializeEditor() {
     ].forEach((control) => {
       control.disabled = !hasObjectSelection;
     });
-    editorLayout.classList.toggle("pointer-mode", !isNodeTool);
+    editorLayout.classList.toggle("node-mode", isNodeTool);
+    editorLayout.classList.toggle("pointer-mode", isPointerTool);
+    editorLayout.classList.toggle("no-inspector", !isNodeTool && !isPointerTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
+    layerInspector.setAttribute("aria-hidden", String(!isPointerTool));
     nodeActions.hidden = isDrawingTool || isRotateTool;
     nodeActions.setAttribute("aria-label", isPointerTool ? "Object actions" : "Node actions");
     deselectButton.hidden = !isNodeTool;
     deleteButton.disabled = isNodeTool
       ? !hasSelection
-      : !isPointerTool || !objectSelected || !shapes.length;
+      : !isPointerTool || !hasObjectSelection;
     deleteButton.setAttribute(
       "aria-label",
       isPointerTool ? "Delete selected object" : "Delete selected nodes",
@@ -1853,11 +2103,11 @@ function initializeEditor() {
       canvasHintText.textContent = "Drag from the first node to the second · scroll to pan";
     } else {
       toolName.textContent = "Pointer tool";
-      toolDescription.textContent = "Move, stretch, or resize the selected object";
+      toolDescription.textContent = `Move, transform, or reorder objects in Layer ${activeLayer}`;
       toolStatus.textContent = "Pointer editing";
       canvasHintText.textContent = objectSelected
-        ? "Alt-drag duplicates · side handles: Alt centers, Ctrl skews, Ctrl+Alt centers skew"
-        : "Click an object to select it · Alt-drag to duplicate · drag or scroll to pan";
+        ? `Layer ${activeLayer} editable · Alt-drag duplicates · Alt centers · Ctrl skews`
+        : `Layer ${activeLayer} editable · click its objects to select · drag or scroll to pan`;
     }
   }
 
@@ -1874,15 +2124,94 @@ function initializeEditor() {
     render();
   }
 
+  function setActiveLayer(layer) {
+    const nextLayer = normalizeLayer(layer);
+    if (nextLayer === activeLayer) return;
+    activeLayer = nextLayer;
+    activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+    if (activeShapeIndex >= 0) {
+      points = shapes[activeShapeIndex].points;
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+      objectSelected = activeTool === "pointer";
+    } else {
+      points = [];
+      selectedIndex = 0;
+      selectedIndices.clear();
+      objectSelected = false;
+    }
+    closeObjectContextMenu();
+    canvasHint.hidden = false;
+    render();
+    announce(`Layer ${activeLayer} is now editable`);
+  }
+
+  function reorderObjectInLayer(sourceId, targetId, insertAfter) {
+    if (!sourceId || sourceId === targetId) return;
+    const sourceShape = shapes.find((shape) => shape.id === sourceId);
+    if (!sourceShape || normalizeLayer(sourceShape.layer) !== activeLayer) return;
+    const activeShapeId = shapes[activeShapeIndex]?.id;
+    const previousState = captureUndoState();
+    shapes = reorderShapesInLayer(shapes, sourceId, targetId, insertAfter);
+    activeShapeIndex = shapes.findIndex((shape) => shape.id === activeShapeId);
+    points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
+    const changed = recordUndoState(previousState);
+    render();
+    if (changed) announce(`Reordered ${sourceShape.name} in Layer ${activeLayer}`);
+  }
+
+  function moveObjectToLayer(shapeId, targetLayer) {
+    const sourceShape = shapes.find((shape) => shape.id === shapeId);
+    if (!sourceShape) return;
+    const nextLayer = normalizeLayer(targetLayer);
+    if (normalizeLayer(sourceShape.layer) === nextLayer) {
+      closeObjectContextMenu();
+      return;
+    }
+    const previousState = captureUndoState();
+    const wasSelected = shapes[activeShapeIndex]?.id === shapeId;
+    shapes = moveShapeToLayer(shapes, shapeId, nextLayer);
+    if (wasSelected) {
+      activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+      points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
+      selectedIndex = 0;
+      selectedIndices = activeShapeIndex >= 0
+        ? new Set(points.map((_, index) => index))
+        : new Set();
+      objectSelected = activeShapeIndex >= 0 && activeTool === "pointer";
+    } else if (activeShapeIndex >= 0) {
+      const selectedId = previousState.shapes[previousState.activeShapeIndex]?.id;
+      activeShapeIndex = shapes.findIndex((shape) => shape.id === selectedId);
+      points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
+    } else if (nextLayer === activeLayer) {
+      activeShapeIndex = shapes.findIndex((shape) => shape.id === shapeId);
+      points = shapes[activeShapeIndex].points;
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+      objectSelected = activeTool === "pointer";
+    }
+    recordUndoState(previousState);
+    closeObjectContextMenu();
+    render();
+    announce(`Moved ${sourceShape.name} to Layer ${nextLayer}`);
+  }
+
   function setActiveTool(tool) {
     activeTool = tool;
     dragging = null;
     draftShape = null;
+    closeObjectContextMenu();
     if (["pointer", "rotate"].includes(tool)) {
-      objectSelected = shapes.length > 0;
+      if (!shapeIsEditable(activeShapeIndex)) {
+        activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+        points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
+      }
+      objectSelected = activeShapeIndex >= 0;
       if (objectSelected) {
         selectedIndices = new Set(points.map((_, index) => index));
         selectedIndex = 0;
+      } else {
+        selectedIndices.clear();
       }
     }
     if (tool === "rotate" && !colorPopover.hidden) {
@@ -1934,7 +2263,7 @@ function initializeEditor() {
   }
 
   function applyObjectTransform(nextPoints, message) {
-    if (!objectSelected || activeShapeIndex < 0 || !shapes[activeShapeIndex]) {
+    if (!objectSelected || activeShapeIndex < 0 || !shapeIsEditable(activeShapeIndex)) {
       announce("Select an object first");
       return false;
     }
@@ -2167,6 +2496,7 @@ function initializeEditor() {
     shapes.push({
       id: nextShapeId,
       name,
+      layer: activeLayer,
       kind,
       closed,
       fillEnabled,
@@ -2296,30 +2626,40 @@ function initializeEditor() {
     );
   }
 
-  function deleteActiveObject() {
-    if (!objectSelected || activeShapeIndex < 0 || !shapes[activeShapeIndex]) {
-      announce("Select an object to delete");
-      return;
-    }
-
+  function deleteObjectById(shapeId) {
+    const deletedIndex = shapes.findIndex((shape) => shape.id === shapeId);
+    if (deletedIndex < 0) return;
     const previousState = captureUndoState();
-    const [deletedShape] = shapes.splice(activeShapeIndex, 1);
-    if (shapes.length) {
-      activeShapeIndex = Math.min(activeShapeIndex, shapes.length - 1);
+    const activeShapeId = shapes[activeShapeIndex]?.id;
+    const [deletedShape] = shapes.splice(deletedIndex, 1);
+    if (activeShapeId === shapeId) {
+      activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+    } else {
+      activeShapeIndex = shapes.findIndex((shape) => shape.id === activeShapeId);
+    }
+    if (activeShapeIndex >= 0) {
       points = shapes[activeShapeIndex].points;
       selectedIndex = 0;
       selectedIndices = new Set(points.map((_, index) => index));
-      objectSelected = true;
+      objectSelected = ["pointer", "rotate"].includes(activeTool);
     } else {
-      activeShapeIndex = -1;
       points = [];
       selectedIndex = 0;
       selectedIndices.clear();
       objectSelected = false;
     }
     recordUndoState(previousState);
+    closeObjectContextMenu();
     render();
     announce(`Deleted ${deletedShape.name}`);
+  }
+
+  function deleteActiveObject() {
+    if (!objectSelected || activeShapeIndex < 0 || !shapeIsEditable(activeShapeIndex)) {
+      announce("Select an object to delete");
+      return;
+    }
+    deleteObjectById(shapes[activeShapeIndex].id);
   }
 
   function deleteCurrentSelection() {
@@ -2716,6 +3056,19 @@ function initializeEditor() {
   rectangleToolButton.addEventListener("click", () => setActiveTool("rectangle"));
   circleToolButton.addEventListener("click", () => setActiveTool("circle"));
   lineToolButton.addEventListener("click", () => setActiveTool("line"));
+  layerButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveLayer(button.dataset.layer));
+  });
+  contextDeleteObjectButton.addEventListener("click", () => {
+    if (contextShapeId !== null) deleteObjectById(contextShapeId);
+  });
+  contextLayerButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (contextShapeId !== null) {
+        moveObjectToLayer(contextShapeId, button.dataset.contextLayer);
+      }
+    });
+  });
   addNodeButton.addEventListener("click", addMidpointNode);
   deselectButton.addEventListener("click", () =>
     deselectAllNodes({ announceChange: true }),
@@ -2766,6 +3119,9 @@ function initializeEditor() {
     if (!colorPopover.hidden && !colorControl.contains(event.target)) {
       setColorPopoverOpen(false);
     }
+    if (!objectContextMenu.hidden && !objectContextMenu.contains(event.target)) {
+      closeObjectContextMenu();
+    }
   });
 
   document.querySelector("#reset-shape").addEventListener("click", () => {
@@ -2774,6 +3130,7 @@ function initializeEditor() {
       {
         id: 1,
         name: "Shape 1",
+        layer: DEFAULT_LAYER,
         kind: "path",
         closed: true,
         fill: normalizeFill(),
@@ -2783,6 +3140,7 @@ function initializeEditor() {
       },
     ];
     activeShapeIndex = 0;
+    activeLayer = DEFAULT_LAYER;
     points = shapes[activeShapeIndex].points;
     nextShapeId = 2;
     selectedIndex = 0;
@@ -2811,11 +3169,18 @@ function initializeEditor() {
       undoLastChange();
       return;
     }
-    if (event.key === "Escape" && !colorPopover.hidden) {
-      event.preventDefault();
-      setColorPopoverOpen(false);
-      (activePaintTarget === "outline" ? outlineColorButton : fillColorButton).focus();
-      return;
+    if (event.key === "Escape") {
+      if (!objectContextMenu.hidden) {
+        event.preventDefault();
+        closeObjectContextMenu();
+        return;
+      }
+      if (!colorPopover.hidden) {
+        event.preventDefault();
+        setColorPopoverOpen(false);
+        (activePaintTarget === "outline" ? outlineColorButton : fillColorButton).focus();
+        return;
+      }
     }
     if (event.target.closest("input, textarea, [contenteditable='true']")) return;
 
@@ -2846,11 +3211,13 @@ function initializeEditor() {
 }
 
 const VectorEditorCore = {
+  DEFAULT_LAYER,
   DEFAULT_FILL_COLOR,
   DEFAULT_OUTLINE_COLOR,
   DEFAULT_OUTLINE_WIDTH,
   FILL_TYPES,
   INITIAL_POINTS,
+  LAYER_COUNT,
   MINIMUM_SHAPE_SIZE,
   absoluteHandle,
   calculateWheelPan,
@@ -2878,16 +3245,20 @@ const VectorEditorCore = {
   hexToHsb,
   hsbToHex,
   midpoint,
+  moveShapeToLayer,
   cloneFill,
   normalizeFill,
   normalizeHexColor,
+  normalizeLayer,
   normalizeOutlineWidth,
   resizeShapePoints,
+  reorderShapesInLayer,
   skewShapePoints,
   rotateShapePoints,
   rotateVector,
   scalePointsToBounds,
   setPointType,
+  shapeRenderOrder,
   splitSegment,
   updatePointHandle,
 };

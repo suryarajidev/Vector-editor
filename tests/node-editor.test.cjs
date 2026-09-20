@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict");
 const {
+  DEFAULT_LAYER,
   DEFAULT_FILL_COLOR,
   DEFAULT_OUTLINE_COLOR,
   DEFAULT_OUTLINE_WIDTH,
   INITIAL_POINTS,
+  LAYER_COUNT,
   MINIMUM_SHAPE_SIZE,
   calculateShapeBounds,
   calculateWheelPan,
@@ -27,15 +29,18 @@ const {
   hexToHsb,
   hsbToHex,
   midpoint,
+  moveShapeToLayer,
   normalizeFill,
   normalizeHexColor,
   normalizeOutlineWidth,
   resizeShapePoints,
+  reorderShapesInLayer,
   skewShapePoints,
   rotateShapePoints,
   rotateVector,
   scalePointsToBounds,
   setPointType,
+  shapeRenderOrder,
   splitSegment,
   updatePointHandle,
 } = require("../app.js");
@@ -45,6 +50,8 @@ const points = clonePoints(INITIAL_POINTS);
 assert.equal(DEFAULT_FILL_COLOR, "#052d5c");
 assert.equal(DEFAULT_OUTLINE_COLOR, "#ffffff");
 assert.equal(DEFAULT_OUTLINE_WIDTH, 8);
+assert.equal(DEFAULT_LAYER, 1);
+assert.equal(LAYER_COUNT, 5);
 assert.equal(MINIMUM_SHAPE_SIZE, 2);
 assert.equal(normalizeOutlineWidth("12.5"), 12.5);
 assert.equal(normalizeOutlineWidth(150), 100);
@@ -75,6 +82,28 @@ assert.notEqual(copiedShape.points, originalShape.points);
 assert.notEqual(copiedShape.points[0], originalShape.points[0]);
 copiedShape.points[0].x = 999;
 assert.equal(originalShape.points[0].x, INITIAL_POINTS[0].x);
+
+const layeredShapes = [
+  { id: 1, name: "Back in Layer 1", layer: 1 },
+  { id: 2, name: "Middle in Layer 1", layer: 1 },
+  { id: 3, name: "Only in Layer 5", layer: 5 },
+  { id: 4, name: "Front in Layer 1", layer: 1 },
+];
+assert.deepEqual(
+  shapeRenderOrder(layeredShapes).map(({ shape }) => shape.id),
+  [3, 1, 2, 4],
+);
+const reorderedLayer = reorderShapesInLayer(layeredShapes, 1, 4, false);
+assert.deepEqual(reorderedLayer.map(({ id }) => id), [2, 4, 3, 1]);
+assert.deepEqual(
+  shapeRenderOrder(reorderedLayer)
+    .filter(({ shape }) => shape.layer === 1)
+    .map(({ shape }) => shape.id),
+  [2, 4, 1],
+);
+const movedLayerShape = moveShapeToLayer(layeredShapes, 3, 1);
+assert.deepEqual(movedLayerShape.map(({ id }) => id), [1, 2, 4, 3]);
+assert.equal(movedLayerShape.at(-1).layer, 1);
 
 const transformSquare = [
   { x: 0, y: 0, type: "corner", handleIn: null, handleOut: { x: 2, y: 0 } },
@@ -469,6 +498,12 @@ assert.match(
   createDocumentSvg([{ points, color: "#a329d6" }]),
   /fill="#a329d6"/,
 );
+const layeredSvgPaths = createDocumentSvg([
+  { points: rectangle, layer: 1, color: "#ff0000" },
+  { points, layer: 5, color: "#0000ff" },
+]).match(/  <path[^\n]+/g);
+assert.match(layeredSvgPaths[0], /fill="#0000ff"/);
+assert.match(layeredSvgPaths[1], /fill="#ff0000"/);
 const gradientSvg = createDocumentSvg([
   { points, fill: { type: "horizontal", colors: ["#052d5c", "#12b5a6"] } },
   { points: rectangle, fill: { type: "vertical", colors: ["#a329d6", "#ffcc00"] } },
