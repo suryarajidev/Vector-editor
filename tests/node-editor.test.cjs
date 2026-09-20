@@ -31,6 +31,7 @@ const {
   normalizeHexColor,
   normalizeOutlineWidth,
   resizeShapePoints,
+  skewShapePoints,
   rotateShapePoints,
   rotateVector,
   scalePointsToBounds,
@@ -314,6 +315,22 @@ assert.deepEqual(calculateShapeBounds(stretchedRectangle), {
   width: 160,
   height: 40,
 });
+const centeredStretchedRectangle = resizeShapePoints(
+  rectangle,
+  "e",
+  { x: 240, y: 120 },
+  undefined,
+  undefined,
+  true,
+);
+assert.deepEqual(calculateShapeBounds(centeredStretchedRectangle), {
+  left: 40,
+  top: 100,
+  right: 240,
+  bottom: 140,
+  width: 200,
+  height: 40,
+});
 assert.equal(
   calculateShapeBounds(resizeShapePoints(rectangle, "e", { x: 100.1, y: 120 })).width,
   2,
@@ -365,6 +382,41 @@ const resizedCurve = scalePointsToBounds(
 );
 assert.deepEqual(resizedCurve[0].handleOut, { x: 40, y: 5 });
 assert.deepEqual(resizedCurve[1].handleIn, { x: -40, y: -5 });
+const skewSquare = [
+  { x: 0, y: 0, type: "corner", handleIn: null, handleOut: { x: 2, y: 0 } },
+  { x: 10, y: 0, type: "corner", handleIn: null, handleOut: null },
+  { x: 10, y: 10, type: "corner", handleIn: null, handleOut: null },
+  { x: 0, y: 10, type: "corner", handleIn: null, handleOut: null },
+];
+assert.deepEqual(
+  skewShapePoints(skewSquare, "n", { x: 2, y: 0 }).map(({ x, y }) => ({ x, y })),
+  [
+    { x: 2, y: 0 },
+    { x: 12, y: 0 },
+    { x: 10, y: 10 },
+    { x: 0, y: 10 },
+  ],
+);
+assert.deepEqual(
+  skewShapePoints(skewSquare, "n", { x: 2, y: 0 }, true).map(({ x, y }) => ({ x, y })),
+  [
+    { x: 2, y: 0 },
+    { x: 12, y: 0 },
+    { x: 8, y: 10 },
+    { x: -2, y: 10 },
+  ],
+);
+const verticallySkewedSquare = skewShapePoints(skewSquare, "e", { x: 0, y: 3 });
+assert.deepEqual(
+  verticallySkewedSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 0, y: 0 },
+    { x: 10, y: 3 },
+    { x: 10, y: 13 },
+    { x: 0, y: 10 },
+  ],
+);
+assert.deepEqual(verticallySkewedSquare[0].handleOut, { x: 2, y: 0.6 });
 assert.deepEqual(
   rectangle.map(({ x, y }) => ({ x, y })),
   [

@@ -16,6 +16,8 @@ The prototype currently supports:
 - Dragging the filled shape to move the whole object
 - Holding `Alt` while beginning a Pointer-tool drag to duplicate and move the copy
 - Stretching selected objects with side handles or proportionally resizing them from a corner
+- Holding `Alt` while stretching a side handle to resize equally from the object's center
+- Holding `Ctrl`/`Command` while dragging a side handle to skew, with `Alt`/`Option` for a centered skew
 - Freely rotating selected objects with the Rotate tool, with optional 15-degree snapping
 - Rotating by ±45°, ±90°, or a custom angle from the Rotate tool's top controls
 - Flipping selected objects horizontally or vertically from the Pointer and Rotate tools

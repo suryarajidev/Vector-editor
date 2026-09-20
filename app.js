@@ -312,11 +312,13 @@ function resizeShapePoints(
   pointer,
   bounds = { left: 18, top: 18, right: 622, bottom: 402 },
   minimumSize = MINIMUM_SHAPE_SIZE,
+  centered = false,
 ) {
   const source = calculateShapeBounds(points);
   if (!source) return [];
   const target = { ...source };
   const isCorner = ["nw", "ne", "se", "sw"].includes(handle);
+  const isSide = ["n", "e", "s", "w"].includes(handle);
 
   if (isCorner && source.width > 0 && source.height > 0) {
     const movesWest = handle.includes("w");
@@ -358,6 +360,45 @@ function resizeShapePoints(
     return scalePointsToBounds(points, source, target);
   }
 
+  if (centered && isSide) {
+    const centerX = (source.left + source.right) / 2;
+    const centerY = (source.top + source.bottom) / 2;
+    if (["e", "w"].includes(handle)) {
+      const requestedHalfWidth = handle === "e"
+        ? pointer.x - centerX
+        : centerX - pointer.x;
+      const maximumHalfWidth = Math.min(
+        centerX - bounds.left,
+        bounds.right - centerX,
+      );
+      const halfWidth = clamp(
+        requestedHalfWidth,
+        minimumSize / 2,
+        maximumHalfWidth,
+      );
+      target.left = centerX - halfWidth;
+      target.right = centerX + halfWidth;
+    } else {
+      const requestedHalfHeight = handle === "s"
+        ? pointer.y - centerY
+        : centerY - pointer.y;
+      const maximumHalfHeight = Math.min(
+        centerY - bounds.top,
+        bounds.bottom - centerY,
+      );
+      const halfHeight = clamp(
+        requestedHalfHeight,
+        minimumSize / 2,
+        maximumHalfHeight,
+      );
+      target.top = centerY - halfHeight;
+      target.bottom = centerY + halfHeight;
+    }
+    target.width = target.right - target.left;
+    target.height = target.bottom - target.top;
+    return scalePointsToBounds(points, source, target);
+  }
+
   if (handle.includes("w")) {
     target.left = clamp(pointer.x, bounds.left, source.right - minimumSize);
   }
@@ -374,6 +415,50 @@ function resizeShapePoints(
   target.width = target.right - target.left;
   target.height = target.bottom - target.top;
   return scalePointsToBounds(points, source, target);
+}
+
+function skewShapePoints(points, handle, delta, centered = false) {
+  if (!points.length || !["n", "e", "s", "w"].includes(handle)) {
+    return clonePoints(points);
+  }
+  const bounds = calculateShapeBounds(points);
+  const centerX = (bounds.left + bounds.right) / 2;
+  const centerY = (bounds.top + bounds.bottom) / 2;
+  const multiplier = centered ? 2 : 1;
+  let shearX = 0;
+  let shearY = 0;
+  let anchorX = centerX;
+  let anchorY = centerY;
+
+  if (["n", "s"].includes(handle) && bounds.height > 0) {
+    shearX =
+      ((handle === "n" ? -delta.x : delta.x) / bounds.height) * multiplier;
+    anchorY = centered ? centerY : handle === "n" ? bounds.bottom : bounds.top;
+  } else if (["e", "w"].includes(handle) && bounds.width > 0) {
+    shearY =
+      ((handle === "w" ? -delta.y : delta.y) / bounds.width) * multiplier;
+    anchorX = centered ? centerX : handle === "w" ? bounds.right : bounds.left;
+  } else {
+    return clonePoints(points);
+  }
+
+  return points.map((point) => ({
+    ...point,
+    x: roundValue(point.x + shearX * (point.y - anchorY)),
+    y: roundValue(point.y + shearY * (point.x - anchorX)),
+    handleIn: point.handleIn
+      ? {
+          x: roundValue(point.handleIn.x + shearX * point.handleIn.y),
+          y: roundValue(point.handleIn.y + shearY * point.handleIn.x),
+        }
+      : null,
+    handleOut: point.handleOut
+      ? {
+          x: roundValue(point.handleOut.x + shearX * point.handleOut.y),
+          y: roundValue(point.handleOut.y + shearY * point.handleOut.x),
+        }
+      : null,
+  }));
 }
 
 function rotateVector(vector, angleDegrees) {
@@ -1544,13 +1629,13 @@ function initializeEditor() {
 
     const handles = [
       ["nw", bounds.left, bounds.top, "Proportionally resize from top-left corner"],
-      ["n", centerX, bounds.top, "Stretch from top edge"],
+      ["n", centerX, bounds.top, "Stretch from top edge; hold Alt to stretch from the center or Control to skew"],
       ["ne", bounds.right, bounds.top, "Proportionally resize from top-right corner"],
-      ["e", bounds.right, centerY, "Stretch from right edge"],
+      ["e", bounds.right, centerY, "Stretch from right edge; hold Alt to stretch from the center or Control to skew"],
       ["se", bounds.right, bounds.bottom, "Proportionally resize from bottom-right corner"],
-      ["s", centerX, bounds.bottom, "Stretch from bottom edge"],
+      ["s", centerX, bounds.bottom, "Stretch from bottom edge; hold Alt to stretch from the center or Control to skew"],
       ["sw", bounds.left, bounds.bottom, "Proportionally resize from bottom-left corner"],
-      ["w", bounds.left, centerY, "Stretch from left edge"],
+      ["w", bounds.left, centerY, "Stretch from left edge; hold Alt to stretch from the center or Control to skew"],
     ];
 
     handles.forEach(([handle, x, y, label]) => {
@@ -1771,7 +1856,7 @@ function initializeEditor() {
       toolDescription.textContent = "Move, stretch, or resize the selected object";
       toolStatus.textContent = "Pointer editing";
       canvasHintText.textContent = objectSelected
-        ? "Alt-drag to duplicate · corners keep proportions · sides stretch · scroll to pan"
+        ? "Alt-drag duplicates · side handles: Alt centers, Ctrl skews, Ctrl+Alt centers skew"
         : "Click an object to select it · Alt-drag to duplicate · drag or scroll to pan";
     }
   }
@@ -1985,13 +2070,35 @@ function initializeEditor() {
 
     if (dragging.kind === "resize") {
       dragging.moved = true;
-      const resizedPoints = resizeShapePoints(
-        dragging.startPoints,
-        dragging.handle,
-        pointer,
-      );
-      shapes[activeShapeIndex].points = resizedPoints;
-      points = resizedPoints;
+      const isSideHandle = ["n", "e", "s", "w"].includes(dragging.handle);
+      const shouldSkew = isSideHandle && (event.ctrlKey || event.metaKey);
+      const transformPoints = shouldSkew
+        ? skewShapePoints(
+            dragging.startPoints,
+            dragging.handle,
+            {
+              x: pointer.x - dragging.startPointer.x,
+              y: pointer.y - dragging.startPointer.y,
+            },
+            event.altKey,
+          )
+        : resizeShapePoints(
+            dragging.startPoints,
+            dragging.handle,
+            pointer,
+            undefined,
+            undefined,
+            isSideHandle && event.altKey,
+          );
+      dragging.transformMode = shouldSkew
+        ? event.altKey
+          ? "centered-skew"
+          : "skew"
+        : isSideHandle && event.altKey
+          ? "centered-resize"
+          : "resize";
+      shapes[activeShapeIndex].points = transformPoints;
+      points = transformPoints;
       selectedIndices = new Set(points.map((_, index) => index));
       canvasHint.hidden = true;
       render();
@@ -2370,6 +2477,7 @@ function initializeEditor() {
         kind: "resize",
         moved: false,
         handle: resizeControl.dataset.resizeHandle,
+        startPointer: pointer,
         startPoints: clonePoints(points),
         undoState: captureUndoState(),
       };
@@ -2536,6 +2644,14 @@ function initializeEditor() {
       const angle = completedDrag.rotationDegrees ?? 0;
       const direction = angle >= 0 ? "clockwise" : "counterclockwise";
       announce(`Rotated ${formatNumber(Math.abs(angle))}° ${direction}`);
+    } else if (completedDrag.kind === "resize" && changed) {
+      const messages = {
+        "centered-skew": "Skewed object from the center",
+        skew: "Skewed object",
+        "centered-resize": "Stretched object from the center",
+        resize: "Resized object",
+      };
+      announce(messages[completedDrag.transformMode] ?? "Transformed object");
     }
   });
 
@@ -2767,6 +2883,7 @@ const VectorEditorCore = {
   normalizeHexColor,
   normalizeOutlineWidth,
   resizeShapePoints,
+  skewShapePoints,
   rotateShapePoints,
   rotateVector,
   scalePointsToBounds,
