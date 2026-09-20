@@ -34,6 +34,18 @@ function clonePoints(points) {
   }));
 }
 
+function duplicateShape(shape, id) {
+  const baseName = String(shape.name ?? "Shape").replace(/\s+\d+$/, "").trim() || "Shape";
+  return {
+    ...shape,
+    id,
+    name: `${baseName} ${id}`,
+    fill: cloneFill(shape.fill),
+    outline: cloneFill(shape.outline),
+    points: clonePoints(shape.points),
+  };
+}
+
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
@@ -1620,8 +1632,8 @@ function initializeEditor() {
       toolDescription.textContent = "Move, stretch, or resize the selected object";
       toolStatus.textContent = "Pointer editing";
       canvasHintText.textContent = objectSelected
-        ? "Corners keep proportions · sides stretch · drag object · scroll to pan"
-        : "Click an object to select it · drag or scroll to pan";
+        ? "Alt-drag to duplicate · corners keep proportions · sides stretch · scroll to pan"
+        : "Click an object to select it · Alt-drag to duplicate · drag or scroll to pan";
     }
   }
 
@@ -1669,6 +1681,26 @@ function initializeEditor() {
 
     if (!matrix) return null;
     return screenPoint.matrixTransform(matrix.inverse());
+  }
+
+  function duplicateShapeForDrag(dragState) {
+    const sourceShape = shapes[activeShapeIndex];
+    if (!sourceShape) return;
+
+    const copiedShape = duplicateShape(sourceShape, nextShapeId);
+    shapes.push(copiedShape);
+    nextShapeId += 1;
+    activeShapeIndex = shapes.length - 1;
+    points = copiedShape.points;
+    selectedIndex = 0;
+    selectedIndices = new Set(points.map((_, index) => index));
+    objectSelected = true;
+    dragState.startPositions = points.map((point, index) => ({
+      index,
+      x: point.x,
+      y: point.y,
+    }));
+    dragState.duplicated = true;
   }
 
   function updateDrag(event) {
@@ -1763,7 +1795,15 @@ function initializeEditor() {
         event.clientX - dragging.startClient.x,
         event.clientY - dragging.startClient.y,
       );
-      if (dragging.kind === "shape" && !dragging.moved && screenDistance < 3) return;
+      if (dragging.kind === "shape" && !dragging.moved) {
+        if (screenDistance < 3) return;
+        if (
+          activeTool === "pointer" &&
+          (dragging.duplicateOnDrag || event.altKey)
+        ) {
+          duplicateShapeForDrag(dragging);
+        }
+      }
 
       dragging.moved = true;
       const requestedX = pointer.x - dragging.startPointer.x;
@@ -2144,6 +2184,7 @@ function initializeEditor() {
           x: points[index].x,
           y: points[index].y,
         })),
+        duplicateOnDrag: activeTool === "pointer" && event.altKey,
         undoState: captureUndoState(),
       };
     } else {
@@ -2244,6 +2285,9 @@ function initializeEditor() {
 
     if (completedDrag.moved) recordUndoState(completedDrag.undoState);
     render();
+    if (completedDrag.duplicated) {
+      announce(`Duplicated ${shapes[activeShapeIndex].name}`);
+    }
   });
 
   svg.addEventListener("pointercancel", () => {
@@ -2446,6 +2490,7 @@ const VectorEditorCore = {
   createSegmentPathData,
   createZoomViewBox,
   cubicPointAt,
+  duplicateShape,
   findClosestSegment,
   fillCssBackground,
   fillPaintValue,

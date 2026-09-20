@@ -21,6 +21,7 @@ const {
   createRectanglePoints,
   createZoomViewBox,
   cubicPointAt,
+  duplicateShape,
   findClosestSegment,
   hexToHsb,
   hsbToHex,
@@ -49,6 +50,28 @@ assert.equal(points.length, 7);
 assert.notEqual(points, INITIAL_POINTS);
 assert.notEqual(points[0], INITIAL_POINTS[0]);
 assert.notEqual(points[0].handleIn, INITIAL_POINTS[0].handleIn);
+
+const originalShape = {
+  id: 2,
+  name: "Rectangle 2",
+  kind: "rectangle",
+  closed: true,
+  fill: { type: "solid", colors: ["#052d5c", "#ffffff"] },
+  outline: { type: "solid", colors: ["#ffffff", "#000000"] },
+  outlineWidth: 8,
+  points: clonePoints(INITIAL_POINTS.slice(0, 4)),
+};
+const copiedShape = duplicateShape(originalShape, 7);
+assert.equal(copiedShape.id, 7);
+assert.equal(copiedShape.name, "Rectangle 7");
+assert.notEqual(copiedShape, originalShape);
+assert.notEqual(copiedShape.fill, originalShape.fill);
+assert.notEqual(copiedShape.outline, originalShape.outline);
+assert.notEqual(copiedShape.points, originalShape.points);
+assert.notEqual(copiedShape.points[0], originalShape.points[0]);
+copiedShape.points[0].x = 999;
+assert.equal(originalShape.points[0].x, INITIAL_POINTS[0].x);
+
 assert.equal(
   createPathData([
     { x: 10, y: 20 },

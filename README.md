@@ -14,6 +14,7 @@ The prototype currently supports:
 - Panning in any tool with the mouse wheel or trackpad (`Shift` scrolls horizontally)
 - Panning the checkerboard background together with the artwork
 - Dragging the filled shape to move the whole object
+- Holding `Alt` while beginning a Pointer-tool drag to duplicate and move the copy
 - Stretching selected objects with side handles or proportionally resizing them from a corner
 - Compressing objects down to a small 2-unit minimum
 - Deleting an entire selected object from Pointer mode with the Delete button or keyboard key
