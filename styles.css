@@ -442,32 +442,61 @@ a:focus-visible {
 }
 
 .fill-type-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  background: #1d2229;
+  border: 1px solid #39414d;
+  border-radius: 9px;
 }
 
 .fill-type-grid button {
-  min-height: 33px;
-  padding: 6px 8px;
-  color: #b8c5d1;
-  font-size: 0.68rem;
-  font-weight: 720;
-  background: #1b1f26;
-  border: 1px solid #3a424e;
-  border-radius: 7px;
+  display: grid;
+  width: 38px;
+  height: 32px;
+  padding: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  place-items: center;
 }
 
 .fill-type-grid button:hover {
-  color: #f1f9fc;
+  background: #303741;
   border-color: #596677;
 }
 
 .fill-type-grid button.is-active {
-  color: #e9fbff;
   background: #123d49;
   border-color: #20bfe5;
   box-shadow: 0 0 0 2px rgb(32 191 229 / 10%);
+}
+
+.fill-type-icon {
+  display: block;
+  width: 25px;
+  height: 19px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
+}
+
+.fill-type-icon-solid {
+  background: #cccccc;
+}
+
+.fill-type-icon-horizontal {
+  background: linear-gradient(90deg, #cccccc, #777777);
+}
+
+.fill-type-icon-vertical {
+  background: linear-gradient(180deg, #cccccc, #777777);
+}
+
+.fill-type-icon-radial {
+  background: radial-gradient(circle, #777777 0 35%, #cccccc 72%);
 }
 
 .gradient-stops {
