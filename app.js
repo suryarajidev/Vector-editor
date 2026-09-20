@@ -19,6 +19,7 @@ const CANVAS_HEIGHT = 420;
 const DEFAULT_FILL_COLOR = "#052d5c";
 const DEFAULT_OUTLINE_COLOR = "#ffffff";
 const DEFAULT_OUTLINE_WIDTH = 8;
+const MINIMUM_SHAPE_SIZE = 2;
 const FILL_TYPES = Object.freeze(["solid", "horizontal", "vertical", "radial"]);
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
@@ -203,6 +204,30 @@ function createZoomViewBox(
   };
 }
 
+function calculateWheelPan(
+  deltaX,
+  deltaY,
+  deltaMode,
+  viewBox,
+  viewport,
+  shiftKey = false,
+) {
+  const useVerticalForHorizontal = shiftKey && deltaX === 0;
+  const requestedX = useVerticalForHorizontal ? deltaY : deltaX;
+  const requestedY = useVerticalForHorizontal ? 0 : deltaY;
+  const width = Math.max(viewport.width, 1);
+  const height = Math.max(viewport.height, 1);
+  const rawPixelX = requestedX * (deltaMode === 1 ? 16 : deltaMode === 2 ? width : 1);
+  const rawPixelY = requestedY * (deltaMode === 1 ? 16 : deltaMode === 2 ? height : 1);
+  const pixelX = clamp(rawPixelX, -120, 120);
+  const pixelY = clamp(rawPixelY, -120, 120);
+
+  return {
+    x: roundValue((pixelX * viewBox.width) / width),
+    y: roundValue((pixelY * viewBox.height) / height),
+  };
+}
+
 function constrainTranslation(
   pointPositions,
   requestedX,
@@ -273,7 +298,7 @@ function resizeShapePoints(
   handle,
   pointer,
   bounds = { left: 18, top: 18, right: 622, bottom: 402 },
-  minimumSize = 12,
+  minimumSize = MINIMUM_SHAPE_SIZE,
 ) {
   const source = calculateShapeBounds(points);
   if (!source) return [];
@@ -1381,19 +1406,19 @@ function initializeEditor() {
       toolName.textContent = "Node tool";
       toolDescription.textContent = "Edit one or more points on the shape";
       toolStatus.textContent = "Node editing";
-      canvasHintText.textContent = "Drag canvas to pan · Shift-click nodes for multiple selection";
+      canvasHintText.textContent = "Drag or scroll to pan · Shift-click nodes for multiple selection";
     } else if (isRectangleTool) {
       toolName.textContent = "Rectangle tool";
       toolDescription.textContent = "Drag to create a rectangle";
       toolStatus.textContent = "Shape drawing";
-      canvasHintText.textContent = "Drag to draw · hold Shift for a perfect square";
+      canvasHintText.textContent = "Drag to draw · hold Shift for a square · scroll to pan";
     } else {
       toolName.textContent = "Pointer tool";
       toolDescription.textContent = "Move, stretch, or resize the selected object";
       toolStatus.textContent = "Pointer editing";
       canvasHintText.textContent = objectSelected
-        ? "Corners keep proportions · sides stretch · drag the shape to move it"
-        : "Click an object to select it · drag empty canvas to pan";
+        ? "Corners keep proportions · sides stretch · drag object · scroll to pan"
+        : "Click an object to select it · drag or scroll to pan";
     }
   }
 
@@ -1885,9 +1910,34 @@ function initializeEditor() {
   svg.addEventListener(
     "wheel",
     (event) => {
-      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      changeZoom(event.deltaY < 0 ? 1 : -1);
+      if (event.ctrlKey || event.metaKey) {
+        changeZoom(event.deltaY < 0 ? 1 : -1);
+        return;
+      }
+
+      const rect = svg.getBoundingClientRect();
+      const viewBox = createZoomViewBox(
+        zoom,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        viewCenter.x,
+        viewCenter.y,
+      );
+      const pan = calculateWheelPan(
+        event.deltaX,
+        event.deltaY,
+        event.deltaMode,
+        viewBox,
+        rect,
+        event.shiftKey,
+      );
+      viewCenter = {
+        x: viewCenter.x + pan.x,
+        y: viewCenter.y + pan.y,
+      };
+      canvasHint.hidden = true;
+      render();
     },
     { passive: false },
   );
@@ -2015,7 +2065,9 @@ const VectorEditorCore = {
   DEFAULT_OUTLINE_WIDTH,
   FILL_TYPES,
   INITIAL_POINTS,
+  MINIMUM_SHAPE_SIZE,
   absoluteHandle,
+  calculateWheelPan,
   calculateShapeBounds,
   clonePoints,
   closestPointOnSegment,

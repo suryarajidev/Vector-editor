@@ -11,9 +11,11 @@ The prototype currently supports:
 - Selecting and dragging numbered path nodes
 - Switching between Pointer and Node tools
 - Dragging empty canvas space to pan with either tool
+- Panning in any tool with the mouse wheel or trackpad (`Shift` scrolls horizontally)
 - Panning the checkerboard background together with the artwork
 - Dragging the filled shape to move the whole object
 - Stretching selected objects with side handles or proportionally resizing them from a corner
+- Compressing objects down to a small 2-unit minimum
 - Deleting an entire selected object from Pointer mode with the Delete button or keyboard key
 - Nudging a selected object with the arrow keys (`Shift` moves 10 pixels)
 - Hiding the node inspector while the Pointer tool is active

@@ -4,7 +4,9 @@ const {
   DEFAULT_OUTLINE_COLOR,
   DEFAULT_OUTLINE_WIDTH,
   INITIAL_POINTS,
+  MINIMUM_SHAPE_SIZE,
   calculateShapeBounds,
+  calculateWheelPan,
   clonePoints,
   closestPointOnSegment,
   closestTOnCubic,
@@ -36,6 +38,7 @@ const points = clonePoints(INITIAL_POINTS);
 assert.equal(DEFAULT_FILL_COLOR, "#052d5c");
 assert.equal(DEFAULT_OUTLINE_COLOR, "#ffffff");
 assert.equal(DEFAULT_OUTLINE_WIDTH, 8);
+assert.equal(MINIMUM_SHAPE_SIZE, 2);
 assert.equal(normalizeOutlineWidth("12.5"), 12.5);
 assert.equal(normalizeOutlineWidth(150), 100);
 assert.equal(normalizeOutlineWidth("not-a-number"), 8);
@@ -202,6 +205,21 @@ assert.deepEqual(calculateShapeBounds(stretchedRectangle), {
   width: 160,
   height: 40,
 });
+assert.equal(
+  calculateShapeBounds(resizeShapePoints(rectangle, "e", { x: 100.1, y: 120 })).width,
+  2,
+);
+assert.deepEqual(
+  calculateShapeBounds(resizeShapePoints(rectangle, "se", { x: 101, y: 101 })),
+  {
+    left: 100,
+    top: 100,
+    right: 104,
+    bottom: 102,
+    width: 4,
+    height: 2,
+  },
+);
 const cornerResizedRectangle = resizeShapePoints(rectangle, "nw", { x: 60, y: 80 });
 assert.deepEqual(calculateShapeBounds(cornerResizedRectangle), {
   left: 60,
@@ -324,6 +342,47 @@ assert.deepEqual(createZoomViewBox(2, 640, 420, 400, 300), {
   width: 320,
   height: 210,
 });
+assert.deepEqual(
+  calculateWheelPan(
+    0,
+    100,
+    0,
+    createZoomViewBox(2),
+    { width: 640, height: 420 },
+  ),
+  { x: 0, y: 50 },
+);
+assert.deepEqual(
+  calculateWheelPan(
+    0,
+    25,
+    0,
+    createZoomViewBox(1),
+    { width: 640, height: 420 },
+    true,
+  ),
+  { x: 25, y: 0 },
+);
+assert.deepEqual(
+  calculateWheelPan(
+    0,
+    1,
+    1,
+    createZoomViewBox(1),
+    { width: 640, height: 420 },
+  ),
+  { x: 0, y: 16 },
+);
+assert.deepEqual(
+  calculateWheelPan(
+    0,
+    50,
+    1,
+    createZoomViewBox(1),
+    { width: 640, height: 420 },
+  ),
+  { x: 0, y: 120 },
+);
 assert.deepEqual(
   constrainTranslation(
     [
