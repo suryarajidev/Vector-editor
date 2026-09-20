@@ -212,6 +212,83 @@ function constrainTranslation(
   };
 }
 
+function calculateShapeBounds(points) {
+  if (!points.length) return null;
+  const positions = [];
+
+  points.forEach((point) => {
+    positions.push({ x: point.x, y: point.y });
+    [point.handleIn, point.handleOut].forEach((handle) => {
+      if (handle) positions.push({ x: point.x + handle.x, y: point.y + handle.y });
+    });
+  });
+
+  const left = Math.min(...positions.map((point) => point.x));
+  const right = Math.max(...positions.map((point) => point.x));
+  const top = Math.min(...positions.map((point) => point.y));
+  const bottom = Math.max(...positions.map((point) => point.y));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function scalePointsToBounds(points, sourceBounds, targetBounds) {
+  const scaleX = sourceBounds.width > 0 ? targetBounds.width / sourceBounds.width : 1;
+  const scaleY = sourceBounds.height > 0 ? targetBounds.height / sourceBounds.height : 1;
+
+  return points.map((point) => ({
+    ...point,
+    x: roundValue(targetBounds.left + (point.x - sourceBounds.left) * scaleX),
+    y: roundValue(targetBounds.top + (point.y - sourceBounds.top) * scaleY),
+    handleIn: point.handleIn
+      ? {
+          x: roundValue(point.handleIn.x * scaleX),
+          y: roundValue(point.handleIn.y * scaleY),
+        }
+      : null,
+    handleOut: point.handleOut
+      ? {
+          x: roundValue(point.handleOut.x * scaleX),
+          y: roundValue(point.handleOut.y * scaleY),
+        }
+      : null,
+  }));
+}
+
+function resizeShapePoints(
+  points,
+  handle,
+  pointer,
+  bounds = { left: 18, top: 18, right: 622, bottom: 402 },
+  minimumSize = 12,
+) {
+  const source = calculateShapeBounds(points);
+  if (!source) return [];
+  const target = { ...source };
+
+  if (handle.includes("w")) {
+    target.left = clamp(pointer.x, bounds.left, source.right - minimumSize);
+  }
+  if (handle.includes("e")) {
+    target.right = clamp(pointer.x, source.left + minimumSize, bounds.right);
+  }
+  if (handle.includes("n")) {
+    target.top = clamp(pointer.y, bounds.top, source.bottom - minimumSize);
+  }
+  if (handle.includes("s")) {
+    target.bottom = clamp(pointer.y, source.top + minimumSize, bounds.bottom);
+  }
+
+  target.width = target.right - target.left;
+  target.height = target.bottom - target.top;
+  return scalePointsToBounds(points, source, target);
+}
+
 function createRectanglePoints(
   start,
   end,
@@ -558,6 +635,7 @@ function initializeEditor() {
   const segmentHitLayer = document.querySelector("#segment-hit-layer");
   const handleLayer = document.querySelector("#handle-layer");
   const nodeLayer = document.querySelector("#node-layer");
+  const transformLayer = document.querySelector("#transform-layer");
   const nodeList = document.querySelector("#node-list");
   const nodeXInput = document.querySelector("#node-x");
   const nodeYInput = document.querySelector("#node-y");
@@ -623,6 +701,7 @@ function initializeEditor() {
   let draftRectangle = null;
   let currentFill = normalizeFill();
   let activeColorStop = 0;
+  let objectSelected = false;
   let toastTimeout;
 
   function announce(message) {
@@ -705,8 +784,10 @@ function initializeEditor() {
   }
 
   function selectShape(index, { selectAll = true } = {}) {
+    if (!shapes.length) return;
     activeShapeIndex = clamp(index, 0, shapes.length - 1);
     points = shapes[activeShapeIndex].points;
+    objectSelected = true;
     selectedIndex = 0;
     selectedIndices = selectAll
       ? new Set(points.map((_, pointIndex) => pointIndex))
@@ -718,12 +799,14 @@ function initializeEditor() {
     shapeLayer.replaceChildren();
 
     shapes.forEach((shape, index) => {
+      const isActive =
+        index === activeShapeIndex && (activeTool !== "pointer" || objectSelected);
       const path = createSvgElement("path", {
-        class: `shape-path${index === activeShapeIndex ? " is-active" : ""}`,
+        class: `shape-path${isActive ? " is-active" : ""}`,
         d: createPathData(shape.points),
         fill: fillPaintValue(shape.fill, `shape-fill-${index}`),
         "data-shape-index": String(index),
-        filter: index === activeShapeIndex ? "url(#shape-shadow)" : "none",
+        filter: isActive ? "url(#shape-shadow)" : "none",
         "aria-label": shape.name,
       });
       if (index === activeShapeIndex) path.id = "shape-path";
@@ -749,12 +832,14 @@ function initializeEditor() {
     objectCount.textContent = String(shapes.length);
 
     shapes.forEach((shape, index) => {
+      const isActive =
+        index === activeShapeIndex && (activeTool !== "pointer" || objectSelected);
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `object-card${index === activeShapeIndex ? " is-active" : ""}`;
+      button.className = `object-card${isActive ? " is-active" : ""}`;
       button.setAttribute(
         "aria-label",
-        `${shape.name}${index === activeShapeIndex ? " selected" : ""}`,
+        `${shape.name}${isActive ? " selected" : ""}`,
       );
 
       const preview = document.createElement("span");
@@ -789,9 +874,12 @@ function initializeEditor() {
   }
 
   function updateColorControls() {
-    const shape = shapes[activeShapeIndex];
-    const fill = normalizeFill(shape.fill, shape.color);
-    shape.fill = fill;
+    const shape = shapes[activeShapeIndex] ?? null;
+    const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
+    const fill = shouldEditShape
+      ? normalizeFill(shape.fill, shape.color)
+      : cloneFill(currentFill);
+    if (shouldEditShape) shape.fill = fill;
     if (fill.type === "solid") activeColorStop = 0;
     const hex = fill.colors[activeColorStop];
     const hsb = hexToHsb(hex);
@@ -837,9 +925,11 @@ function initializeEditor() {
 
   function setFillType(type) {
     if (!FILL_TYPES.includes(type)) return;
-    const fill = normalizeFill(shapes[activeShapeIndex].fill);
+    const shape = shapes[activeShapeIndex] ?? null;
+    const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
+    const fill = shouldEditShape ? normalizeFill(shape.fill) : cloneFill(currentFill);
     fill.type = type;
-    shapes[activeShapeIndex].fill = fill;
+    if (shouldEditShape) shape.fill = fill;
     currentFill = cloneFill(fill);
     if (type === "solid") activeColorStop = 0;
     render();
@@ -858,9 +948,11 @@ function initializeEditor() {
   }
 
   function applyColorToActiveStop(hex) {
-    const fill = normalizeFill(shapes[activeShapeIndex].fill);
+    const shape = shapes[activeShapeIndex] ?? null;
+    const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
+    const fill = shouldEditShape ? normalizeFill(shape.fill) : cloneFill(currentFill);
     fill.colors[activeColorStop] = hex;
-    shapes[activeShapeIndex].fill = fill;
+    if (shouldEditShape) shape.fill = fill;
     currentFill = cloneFill(fill);
   }
 
@@ -948,6 +1040,55 @@ function initializeEditor() {
     });
   }
 
+  function renderTransformBox() {
+    transformLayer.replaceChildren();
+    if (activeTool !== "pointer" || !objectSelected || !points.length) return;
+    const bounds = calculateShapeBounds(points);
+    if (!bounds) return;
+
+    transformLayer.append(
+      createSvgElement("rect", {
+        class: "transform-bounds",
+        x: formatNumber(bounds.left),
+        y: formatNumber(bounds.top),
+        width: formatNumber(bounds.width),
+        height: formatNumber(bounds.height),
+      }),
+    );
+
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
+    const handles = [
+      ["nw", bounds.left, bounds.top, "top-left corner"],
+      ["n", centerX, bounds.top, "top edge"],
+      ["ne", bounds.right, bounds.top, "top-right corner"],
+      ["e", bounds.right, centerY, "right edge"],
+      ["se", bounds.right, bounds.bottom, "bottom-right corner"],
+      ["s", centerX, bounds.bottom, "bottom edge"],
+      ["sw", bounds.left, bounds.bottom, "bottom-left corner"],
+      ["w", bounds.left, centerY, "left edge"],
+    ];
+
+    handles.forEach(([handle, x, y, label]) => {
+      const group = createSvgElement("g", {
+        class: `transform-handle transform-handle-${handle}`,
+        transform: `translate(${formatNumber(x)} ${formatNumber(y)}) scale(${formatNumber(1 / zoom)})`,
+        "data-resize-handle": handle,
+        "aria-label": `Resize from ${label}`,
+      });
+      group.append(
+        createSvgElement("rect", {
+          x: "-5",
+          y: "-5",
+          width: "10",
+          height: "10",
+          rx: "1.5",
+        }),
+      );
+      transformLayer.append(group);
+    });
+  }
+
   function renderNodeList() {
     nodeList.replaceChildren();
 
@@ -988,6 +1129,7 @@ function initializeEditor() {
     renderSegmentHitTargets();
     renderHandles();
     renderCanvasNodes();
+    renderTransformBox();
     renderNodeList();
     renderObjectList();
     updateColorControls();
@@ -1004,7 +1146,9 @@ function initializeEditor() {
         : `${selectedIndices.size} nodes`;
     nodeCount.textContent = String(points.length);
     const curvedCount = points.filter((point) => point.type !== "corner").length;
-    nodeSummary.textContent = `${points.length} nodes · ${curvedCount} curved · Closed path`;
+    nodeSummary.textContent = shapes.length
+      ? `${points.length} nodes · ${curvedCount} curved · Closed path`
+      : "No objects";
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
     zoomInButton.disabled = zoom === ZOOM_LEVELS.at(-1);
@@ -1024,14 +1168,23 @@ function initializeEditor() {
     unevenButton.disabled = !hasSelection;
     addNodeButton.disabled = !hasSelection || activeTool !== "node";
     deselectButton.disabled = !hasSelection;
-    deleteButton.disabled = !hasSelection;
 
     const isNodeTool = activeTool === "node";
     const isPointerTool = activeTool === "pointer";
     const isRectangleTool = activeTool === "rectangle";
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
-    nodeActions.hidden = !isNodeTool;
+    nodeActions.hidden = isRectangleTool;
+    nodeActions.setAttribute("aria-label", isPointerTool ? "Object actions" : "Node actions");
+    deselectButton.hidden = !isNodeTool;
+    deleteButton.disabled = isNodeTool
+      ? !hasSelection
+      : !isPointerTool || !objectSelected || !shapes.length;
+    deleteButton.setAttribute(
+      "aria-label",
+      isPointerTool ? "Delete selected object" : "Delete selected nodes",
+    );
+    deleteButton.title = isPointerTool ? "Delete selected object" : "Delete selected nodes";
     svg.classList.toggle("tool-node", isNodeTool);
     svg.classList.toggle("tool-pointer", isPointerTool);
     svg.classList.toggle("tool-rectangle", isRectangleTool);
@@ -1064,9 +1217,11 @@ function initializeEditor() {
       canvasHintText.textContent = "Drag to draw · hold Shift for a perfect square";
     } else {
       toolName.textContent = "Pointer tool";
-      toolDescription.textContent = "Move the shape or pan the canvas";
+      toolDescription.textContent = "Move, stretch, or resize the selected object";
       toolStatus.textContent = "Pointer editing";
-      canvasHintText.textContent = "Drag canvas to pan · drag the shape to move it";
+      canvasHintText.textContent = objectSelected
+        ? "Drag handles to resize · drag the shape to move it · Delete removes it"
+        : "Click an object to select it · drag empty canvas to pan";
     }
   }
 
@@ -1087,6 +1242,13 @@ function initializeEditor() {
     activeTool = tool;
     dragging = null;
     draftRectangle = null;
+    if (tool === "pointer") {
+      objectSelected = shapes.length > 0;
+      if (objectSelected) {
+        selectedIndices = new Set(points.map((_, index) => index));
+        selectedIndex = 0;
+      }
+    }
     canvasHint.hidden = false;
     render();
     const messages = {
@@ -1145,6 +1307,21 @@ function initializeEditor() {
         points: createRectanglePoints(dragging.startPointer, pointer, event.shiftKey),
         perfectSquare: event.shiftKey,
       };
+      canvasHint.hidden = true;
+      render();
+      return;
+    }
+
+    if (dragging.kind === "resize") {
+      dragging.moved = true;
+      const resizedPoints = resizeShapePoints(
+        dragging.startPoints,
+        dragging.handle,
+        pointer,
+      );
+      shapes[activeShapeIndex].points = resizedPoints;
+      points = resizedPoints;
+      selectedIndices = new Set(points.map((_, index) => index));
       canvasHint.hidden = true;
       render();
       return;
@@ -1256,6 +1433,38 @@ function initializeEditor() {
     );
   }
 
+  function deleteActiveObject() {
+    if (!objectSelected || activeShapeIndex < 0 || !shapes[activeShapeIndex]) {
+      announce("Select an object to delete");
+      return;
+    }
+
+    const [deletedShape] = shapes.splice(activeShapeIndex, 1);
+    if (shapes.length) {
+      activeShapeIndex = Math.min(activeShapeIndex, shapes.length - 1);
+      points = shapes[activeShapeIndex].points;
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+      objectSelected = true;
+    } else {
+      activeShapeIndex = -1;
+      points = [];
+      selectedIndex = 0;
+      selectedIndices.clear();
+      objectSelected = false;
+    }
+    render();
+    announce(`Deleted ${deletedShape.name}`);
+  }
+
+  function deleteCurrentSelection() {
+    if (activeTool === "pointer") {
+      deleteActiveObject();
+    } else if (activeTool === "node") {
+      deleteSelectedNode();
+    }
+  }
+
   function updateSelectedCoordinate(axis, value) {
     if (selectedIndices.size !== 1) return;
     const parsedValue = Number(value);
@@ -1273,6 +1482,21 @@ function initializeEditor() {
       index,
       x: points[index].x,
       y: points[index].y,
+    }));
+    const translation = constrainTranslation(positions, horizontalChange, verticalChange);
+    positions.forEach((position) => {
+      points[position.index].x = roundValue(position.x + translation.x);
+      points[position.index].y = roundValue(position.y + translation.y);
+    });
+    render();
+  }
+
+  function nudgeActiveObject(horizontalChange, verticalChange) {
+    if (!objectSelected || !points.length) return;
+    const positions = points.map((point, index) => ({
+      index,
+      x: point.x,
+      y: point.y,
     }));
     const translation = constrainTranslation(positions, horizontalChange, verticalChange);
     positions.forEach((position) => {
@@ -1320,6 +1544,10 @@ function initializeEditor() {
 
     const handle = activeTool === "node" ? event.target.closest?.("[data-handle]") : null;
     const node = activeTool === "node" ? event.target.closest?.("[data-node-index]") : null;
+    const resizeControl =
+      activeTool === "pointer"
+        ? event.target.closest?.("[data-resize-handle]")
+        : null;
     const segment = event.target.closest?.("[data-segment-index]");
     const shapeElement = event.target.closest?.("[data-shape-index]");
     event.preventDefault();
@@ -1336,6 +1564,13 @@ function initializeEditor() {
         perfectSquare: event.shiftKey,
       };
       render();
+    } else if (resizeControl && objectSelected) {
+      dragging = {
+        kind: "resize",
+        moved: false,
+        handle: resizeControl.dataset.resizeHandle,
+        startPoints: clonePoints(points),
+      };
     } else if (handle) {
       dragging = { kind: "handle", index: selectedIndex, handle: handle.dataset.handle };
     } else if (node) {
@@ -1366,10 +1601,11 @@ function initializeEditor() {
         activeShapeIndex = shapeIndex;
         points = shapes[activeShapeIndex].points;
       }
+      if (activeTool === "pointer") objectSelected = true;
       const indices = points.map((_, index) => index);
       selectedIndices = new Set(indices);
       selectedIndex = 0;
-      if (activeTool === "node") render();
+      if (activeTool === "node" || activeTool === "pointer") render();
       dragging = {
         kind: "shape",
         moved: false,
@@ -1428,7 +1664,15 @@ function initializeEditor() {
     }
 
     if (completedDrag.kind === "pan" && !completedDrag.moved) {
-      deselectAllNodes({ announceChange: true });
+      if (activeTool === "pointer") {
+        const hadSelection = objectSelected;
+        objectSelected = false;
+        selectedIndices.clear();
+        render();
+        if (hadSelection) announce("Object selection cleared");
+      } else {
+        deselectAllNodes({ announceChange: true });
+      }
       return;
     }
 
@@ -1493,7 +1737,7 @@ function initializeEditor() {
   deselectButton.addEventListener("click", () =>
     deselectAllNodes({ announceChange: true }),
   );
-  deleteButton.addEventListener("click", deleteSelectedNode);
+  deleteButton.addEventListener("click", deleteCurrentSelection);
   document.querySelector("#download-svg").addEventListener("click", downloadCurrentSvg);
   zoomOutButton.addEventListener("click", () => changeZoom(-1));
   zoomResetButton.addEventListener("click", resetZoom);
@@ -1537,6 +1781,7 @@ function initializeEditor() {
     nextShapeId = 2;
     selectedIndex = 0;
     selectedIndices = new Set([0]);
+    objectSelected = activeTool === "pointer";
     currentFill = normalizeFill();
     activeColorStop = 0;
     draftRectangle = null;
@@ -1552,13 +1797,15 @@ function initializeEditor() {
       fillColorButton.focus();
       return;
     }
-    if (event.target.closest("input, button, a")) return;
+    if (event.target.closest("input, textarea, [contenteditable='true']")) return;
 
     if (["Delete", "Backspace"].includes(event.key)) {
       event.preventDefault();
-      deleteSelectedNode();
+      deleteCurrentSelection();
       return;
     }
+
+    if (event.target.closest("button, a")) return;
 
     const movementDistance = event.shiftKey ? 10 : 1;
     const movements = {
@@ -1571,7 +1818,8 @@ function initializeEditor() {
     if (!movement) return;
 
     event.preventDefault();
-    nudgeSelectedNode(...movement);
+    if (activeTool === "pointer") nudgeActiveObject(...movement);
+    else if (activeTool === "node") nudgeSelectedNode(...movement);
   });
 
   render();
@@ -1582,6 +1830,7 @@ const VectorEditorCore = {
   FILL_TYPES,
   INITIAL_POINTS,
   absoluteHandle,
+  calculateShapeBounds,
   clonePoints,
   closestPointOnSegment,
   closestTOnCubic,
@@ -1604,6 +1853,8 @@ const VectorEditorCore = {
   cloneFill,
   normalizeFill,
   normalizeHexColor,
+  resizeShapePoints,
+  scalePointsToBounds,
   setPointType,
   splitSegment,
   updatePointHandle,

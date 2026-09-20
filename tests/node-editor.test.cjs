@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const {
   DEFAULT_FILL_COLOR,
   INITIAL_POINTS,
+  calculateShapeBounds,
   clonePoints,
   closestPointOnSegment,
   closestTOnCubic,
@@ -20,6 +21,8 @@ const {
   midpoint,
   normalizeFill,
   normalizeHexColor,
+  resizeShapePoints,
+  scalePointsToBounds,
   setPointType,
   splitSegment,
   updatePointHandle,
@@ -172,6 +175,47 @@ assert.match(
 );
 
 const rectangle = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
+assert.deepEqual(calculateShapeBounds(rectangle), {
+  left: 100,
+  top: 100,
+  right: 180,
+  bottom: 140,
+  width: 80,
+  height: 40,
+});
+const stretchedRectangle = resizeShapePoints(rectangle, "e", { x: 260, y: 120 });
+assert.deepEqual(calculateShapeBounds(stretchedRectangle), {
+  left: 100,
+  top: 100,
+  right: 260,
+  bottom: 140,
+  width: 160,
+  height: 40,
+});
+const cornerResizedRectangle = resizeShapePoints(rectangle, "nw", { x: 60, y: 50 });
+assert.deepEqual(calculateShapeBounds(cornerResizedRectangle), {
+  left: 60,
+  top: 50,
+  right: 180,
+  bottom: 140,
+  width: 120,
+  height: 90,
+});
+assert.equal(
+  calculateShapeBounds(resizeShapePoints(rectangle, "e", { x: 900, y: 120 })).right,
+  622,
+);
+
+const resizedCurve = scalePointsToBounds(
+  [
+    { x: 100, y: 100, type: "smooth", handleIn: null, handleOut: { x: 20, y: 10 } },
+    { x: 200, y: 200, type: "smooth", handleIn: { x: -20, y: -10 }, handleOut: null },
+  ],
+  { left: 100, top: 100, right: 200, bottom: 200, width: 100, height: 100 },
+  { left: 100, top: 100, right: 300, bottom: 150, width: 200, height: 50 },
+);
+assert.deepEqual(resizedCurve[0].handleOut, { x: 40, y: 5 });
+assert.deepEqual(resizedCurve[1].handleIn, { x: -40, y: -5 });
 assert.deepEqual(
   rectangle.map(({ x, y }) => ({ x, y })),
   [

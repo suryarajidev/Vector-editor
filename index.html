@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-gradient-layout" />
+    <link rel="stylesheet" href="styles.css?v=20260920-object-transform" />
   </head>
   <body>
     <div class="app-shell">
@@ -321,6 +321,7 @@
                   <g id="segment-hit-layer" aria-label="Path segments"></g>
                   <g id="handle-layer" aria-label="Curve handles"></g>
                   <g id="node-layer" aria-label="Path nodes"></g>
+                  <g id="transform-layer" aria-label="Object resize controls"></g>
                 </svg>
 
                 <div class="canvas-hint" id="canvas-hint">
@@ -420,6 +421,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-gradient-layout"></script>
+    <script src="app.js?v=20260920-object-transform"></script>
   </body>
 </html>
