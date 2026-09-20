@@ -17,6 +17,8 @@ const INITIAL_POINTS = Object.freeze([
 const CANVAS_WIDTH = 640;
 const CANVAS_HEIGHT = 420;
 const DEFAULT_FILL_COLOR = "#052d5c";
+const DEFAULT_OUTLINE_COLOR = "#ffffff";
+const DEFAULT_OUTLINE_WIDTH = 8;
 const FILL_TYPES = Object.freeze(["solid", "horizontal", "vertical", "radial"]);
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
@@ -113,6 +115,12 @@ function normalizeFill(fill, legacyColor) {
 function cloneFill(fill) {
   const normalized = normalizeFill(fill);
   return { type: normalized.type, colors: [...normalized.colors] };
+}
+
+function normalizeOutlineWidth(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_OUTLINE_WIDTH;
+  return roundValue(clamp(parsed, 0, 100));
 }
 
 function fillPaintValue(fill, gradientId) {
@@ -641,15 +649,23 @@ function createDocumentSvg(shapes) {
   const normalizedShapes = shapes.map((shape) => ({
     ...shape,
     fill: normalizeFill(shape.fill, shape.color),
+    outline: normalizeFill(
+      shape.outline,
+      shape.strokeColor ?? DEFAULT_OUTLINE_COLOR,
+    ),
+    outlineWidth: normalizeOutlineWidth(shape.outlineWidth ?? shape.strokeWidth),
   }));
   const definitions = normalizedShapes
-    .map((shape, index) => createGradientMarkup(shape.fill, `shapeFill${index}`))
+    .flatMap((shape, index) => [
+      createGradientMarkup(shape.fill, `shapeFill${index}`),
+      createGradientMarkup(shape.outline, `shapeOutline${index}`),
+    ])
     .filter(Boolean)
     .join("\n");
   const paths = normalizedShapes
     .map(
       (shape, index) =>
-        `  <path d="${createPathData(shape.points)}" fill="${fillPaintValue(shape.fill, `shapeFill${index}`)}" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
+        `  <path d="${createPathData(shape.points)}" fill="${fillPaintValue(shape.fill, `shapeFill${index}`)}" stroke="${fillPaintValue(shape.outline, `shapeOutline${index}`)}" stroke-width="${formatNumber(shape.outlineWidth)}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
     )
     .join("\n");
   const defs = definitions ? `  <defs>\n${definitions}\n  </defs>\n` : "";
@@ -663,7 +679,14 @@ ${defs}${paths}
 }
 
 function createArtworkSvg(points) {
-  return createDocumentSvg([{ points, fill: normalizeFill() }]);
+  return createDocumentSvg([
+    {
+      points,
+      fill: normalizeFill(),
+      outline: normalizeFill(undefined, DEFAULT_OUTLINE_COLOR),
+      outlineWidth: DEFAULT_OUTLINE_WIDTH,
+    },
+  ]);
 }
 
 function initializeEditor() {
@@ -708,7 +731,11 @@ function initializeEditor() {
   const colorControl = document.querySelector("#color-control");
   const fillColorButton = document.querySelector("#fill-color-button");
   const fillColorSwatch = document.querySelector("#fill-color-swatch");
+  const outlineColorButton = document.querySelector("#outline-color-button");
+  const outlineColorSwatch = document.querySelector("#outline-color-swatch");
+  const outlineWidthInput = document.querySelector("#outline-width-input");
   const colorPopover = document.querySelector("#color-popover");
+  const colorPopoverTitle = document.querySelector("#color-popover-title");
   const colorPreview = document.querySelector("#color-preview");
   const colorSlider = document.querySelector("#color-slider");
   const saturationSlider = document.querySelector("#saturation-slider");
@@ -717,6 +744,7 @@ function initializeEditor() {
   const saturationValue = document.querySelector("#saturation-value");
   const brightnessValue = document.querySelector("#brightness-value");
   const hexColorInput = document.querySelector("#hex-color-input");
+  const paintTypeGrid = document.querySelector("#paint-type-grid");
   const fillTypeButtons = [...document.querySelectorAll("[data-fill-type]")];
   const gradientStops = document.querySelector("#gradient-stops");
   const gradientStopButtons = [...document.querySelectorAll("[data-gradient-stop]")];
@@ -727,6 +755,8 @@ function initializeEditor() {
       name: "Shape 1",
       kind: "path",
       fill: normalizeFill(),
+      outline: normalizeFill(undefined, DEFAULT_OUTLINE_COLOR),
+      outlineWidth: DEFAULT_OUTLINE_WIDTH,
       points: clonePoints(INITIAL_POINTS),
     },
   ];
@@ -741,6 +771,9 @@ function initializeEditor() {
   let dragging = null;
   let draftRectangle = null;
   let currentFill = normalizeFill();
+  let currentOutline = normalizeFill(undefined, DEFAULT_OUTLINE_COLOR);
+  let currentOutlineWidth = DEFAULT_OUTLINE_WIDTH;
+  let activePaintTarget = "fill";
   let activeColorStop = 0;
   let objectSelected = false;
   let toastTimeout;
@@ -815,12 +848,19 @@ function initializeEditor() {
   function renderPaintDefinitions() {
     shapePaintDefs.replaceChildren();
     shapes.forEach((shape, index) => {
-      const gradient = createGradientElement(shape.fill, `shape-fill-${index}`);
-      if (gradient) shapePaintDefs.append(gradient);
+      const fillGradient = createGradientElement(shape.fill, `shape-fill-${index}`);
+      const outlineGradient = createGradientElement(
+        shape.outline,
+        `shape-outline-${index}`,
+      );
+      if (fillGradient) shapePaintDefs.append(fillGradient);
+      if (outlineGradient) shapePaintDefs.append(outlineGradient);
     });
     if (draftRectangle) {
-      const draftGradient = createGradientElement(currentFill, "draft-fill");
-      if (draftGradient) shapePaintDefs.append(draftGradient);
+      const draftFillGradient = createGradientElement(currentFill, "draft-fill");
+      const draftOutlineGradient = createGradientElement(currentOutline, "draft-outline");
+      if (draftFillGradient) shapePaintDefs.append(draftFillGradient);
+      if (draftOutlineGradient) shapePaintDefs.append(draftOutlineGradient);
     }
   }
 
@@ -846,6 +886,8 @@ function initializeEditor() {
         class: `shape-path${isActive ? " is-active" : ""}`,
         d: createPathData(shape.points),
         fill: fillPaintValue(shape.fill, `shape-fill-${index}`),
+        stroke: fillPaintValue(shape.outline, `shape-outline-${index}`),
+        "stroke-width": formatNumber(shape.outlineWidth),
         "data-shape-index": String(index),
         filter: isActive ? "url(#shape-shadow)" : "none",
         "aria-label": shape.name,
@@ -864,6 +906,8 @@ function initializeEditor() {
         class: "draft-shape",
         d: createPathData(draftRectangle.points),
         fill: fillPaintValue(currentFill, "draft-fill"),
+        stroke: fillPaintValue(currentOutline, "draft-outline"),
+        "stroke-width": formatNumber(currentOutlineWidth),
       }),
     );
   }
@@ -888,16 +932,27 @@ function initializeEditor() {
       preview.setAttribute("aria-hidden", "true");
       const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
       const previewGradientId = `object-preview-fill-${shape.id}`;
+      const previewOutlineGradientId = `object-preview-outline-${shape.id}`;
       const previewGradient = createGradientElement(shape.fill, previewGradientId);
-      if (previewGradient) {
+      const previewOutlineGradient = createGradientElement(
+        shape.outline,
+        previewOutlineGradientId,
+      );
+      if (previewGradient || previewOutlineGradient) {
         const previewDefs = createSvgElement("defs");
-        previewDefs.append(previewGradient);
+        if (previewGradient) previewDefs.append(previewGradient);
+        if (previewOutlineGradient) previewDefs.append(previewOutlineGradient);
         previewSvg.append(previewDefs);
       }
       previewSvg.append(
         createSvgElement("path", {
           d: createPathData(shape.points),
           fill: fillPaintValue(shape.fill, previewGradientId),
+          stroke: fillPaintValue(shape.outline, previewOutlineGradientId),
+          "stroke-width": formatNumber(shape.outlineWidth),
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "vector-effect": "non-scaling-stroke",
         }),
       );
       preview.append(previewSvg);
@@ -920,9 +975,20 @@ function initializeEditor() {
     const fill = shouldEditShape
       ? normalizeFill(shape.fill, shape.color)
       : cloneFill(currentFill);
-    if (shouldEditShape) shape.fill = fill;
-    if (fill.type === "solid") activeColorStop = 0;
-    const hex = fill.colors[activeColorStop];
+    const outline = shouldEditShape
+      ? normalizeFill(shape.outline, shape.strokeColor ?? DEFAULT_OUTLINE_COLOR)
+      : cloneFill(currentOutline);
+    const outlineWidth = shouldEditShape
+      ? normalizeOutlineWidth(shape.outlineWidth ?? shape.strokeWidth)
+      : currentOutlineWidth;
+    if (shouldEditShape) {
+      shape.fill = fill;
+      shape.outline = outline;
+      shape.outlineWidth = outlineWidth;
+    }
+    const paint = activePaintTarget === "outline" ? outline : fill;
+    if (paint.type === "solid") activeColorStop = 0;
+    const hex = paint.colors[activeColorStop];
     const hsb = hexToHsb(hex);
     const roundedColor = Math.round(hsb.color);
     const roundedSaturation = Math.round(hsb.saturation);
@@ -936,21 +1002,45 @@ function initializeEditor() {
     brightnessValue.textContent = String(roundedBrightness);
     hexColorInput.value = hex;
     hexColorInput.setAttribute("aria-invalid", "false");
-    const background = fillCssBackground(fill);
-    fillColorSwatch.style.background = background;
-    colorPreview.style.background = background;
+    const fillBackground = fillCssBackground(fill);
+    const outlineBackground = fillCssBackground(outline);
+    const paintBackground = activePaintTarget === "outline"
+      ? outlineBackground
+      : fillBackground;
+    fillColorSwatch.style.background = fillBackground;
+    outlineColorSwatch.style.background = outlineBackground;
+    outlineWidthInput.value = formatNumber(outlineWidth);
+    colorPreview.style.background = paintBackground;
     fillColorButton.title = `Change ${fill.type} fill`;
+    outlineColorButton.title = `Change ${outline.type} outline`;
+    const targetLabel = activePaintTarget === "outline" ? "Outline" : "Fill";
+    colorPopoverTitle.textContent = `${targetLabel} color`;
+    colorPopover.setAttribute("aria-label", `${targetLabel} color`);
+    paintTypeGrid.setAttribute("aria-label", `${targetLabel} style`);
+    hexColorInput.setAttribute(
+      "aria-label",
+      `${targetLabel} color hexadecimal code`,
+    );
+    const paintTypeNames = {
+      solid: "Solid",
+      horizontal: "Left-to-right gradient",
+      vertical: "Top-to-bottom gradient",
+      radial: "Radial gradient",
+    };
     fillTypeButtons.forEach((button) => {
-      const isActive = button.dataset.fillType === fill.type;
+      const type = button.dataset.fillType;
+      const isActive = type === paint.type;
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
+      button.setAttribute("aria-label", `${paintTypeNames[type]} ${activePaintTarget}`);
+      button.title = `${paintTypeNames[type]} ${activePaintTarget}`;
     });
-    gradientStops.hidden = fill.type === "solid";
+    gradientStops.hidden = paint.type === "solid";
     gradientStopButtons.forEach((button, index) => {
       const isActive = index === activeColorStop;
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
-      button.querySelector(".gradient-stop-swatch").style.backgroundColor = fill.colors[index];
+      button.querySelector(".gradient-stop-swatch").style.backgroundColor = paint.colors[index];
     });
     colorPopover.style.setProperty("--picker-hue-color", hsbToHex(hsb.color, 100, 100));
     colorPopover.style.setProperty(
@@ -959,28 +1049,50 @@ function initializeEditor() {
     );
   }
 
-  function setColorPopoverOpen(open) {
+  function setColorPopoverOpen(open, target = activePaintTarget) {
+    activePaintTarget = target;
     colorPopover.hidden = !open;
-    fillColorButton.setAttribute("aria-expanded", String(open));
+    fillColorButton.setAttribute(
+      "aria-expanded",
+      String(open && activePaintTarget === "fill"),
+    );
+    outlineColorButton.setAttribute(
+      "aria-expanded",
+      String(open && activePaintTarget === "outline"),
+    );
+    updateColorControls();
   }
 
-  function setFillType(type) {
+  function toggleColorPopover(target) {
+    const shouldOpen = colorPopover.hidden || activePaintTarget !== target;
+    setColorPopoverOpen(shouldOpen, target);
+  }
+
+  function setPaintType(type) {
     if (!FILL_TYPES.includes(type)) return;
     const shape = shapes[activeShapeIndex] ?? null;
     const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
-    const fill = shouldEditShape ? normalizeFill(shape.fill) : cloneFill(currentFill);
-    fill.type = type;
-    if (shouldEditShape) shape.fill = fill;
-    currentFill = cloneFill(fill);
+    const isOutline = activePaintTarget === "outline";
+    const paint = shouldEditShape
+      ? normalizeFill(
+          isOutline ? shape.outline : shape.fill,
+          isOutline ? shape.strokeColor ?? DEFAULT_OUTLINE_COLOR : shape.color,
+        )
+      : cloneFill(isOutline ? currentOutline : currentFill);
+    paint.type = type;
+    if (shouldEditShape) shape[activePaintTarget] = paint;
+    if (isOutline) currentOutline = cloneFill(paint);
+    else currentFill = cloneFill(paint);
     if (type === "solid") activeColorStop = 0;
     render();
-    const messages = {
-      solid: "Solid fill selected",
-      horizontal: "Left-to-right gradient selected",
-      vertical: "Top-to-bottom gradient selected",
-      radial: "Radial gradient selected",
+    const targetLabel = isOutline ? "outline" : "fill";
+    const typeLabels = {
+      solid: "Solid",
+      horizontal: "Left-to-right gradient",
+      vertical: "Top-to-bottom gradient",
+      radial: "Radial gradient",
     };
-    announce(messages[type]);
+    announce(`${typeLabels[type]} ${targetLabel} selected`);
   }
 
   function selectGradientStop(index) {
@@ -991,10 +1103,29 @@ function initializeEditor() {
   function applyColorToActiveStop(hex) {
     const shape = shapes[activeShapeIndex] ?? null;
     const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
-    const fill = shouldEditShape ? normalizeFill(shape.fill) : cloneFill(currentFill);
-    fill.colors[activeColorStop] = hex;
-    if (shouldEditShape) shape.fill = fill;
-    currentFill = cloneFill(fill);
+    const isOutline = activePaintTarget === "outline";
+    const paint = shouldEditShape
+      ? normalizeFill(
+          isOutline ? shape.outline : shape.fill,
+          isOutline ? shape.strokeColor ?? DEFAULT_OUTLINE_COLOR : shape.color,
+        )
+      : cloneFill(isOutline ? currentOutline : currentFill);
+    paint.colors[activeColorStop] = hex;
+    if (shouldEditShape) shape[activePaintTarget] = paint;
+    if (isOutline) currentOutline = cloneFill(paint);
+    else currentFill = cloneFill(paint);
+  }
+
+  function applyOutlineWidth(value) {
+    if (value === "") return false;
+    const width = normalizeOutlineWidth(value);
+    const shape = shapes[activeShapeIndex] ?? null;
+    const shouldEditShape = shape && (activeTool !== "pointer" || objectSelected);
+    if (shouldEditShape) shape.outlineWidth = width;
+    currentOutlineWidth = width;
+    outlineWidthInput.value = formatNumber(width);
+    render();
+    return true;
   }
 
   function applySliderColor() {
@@ -1430,6 +1561,8 @@ function initializeEditor() {
       name: shapeName,
       kind: "rectangle",
       fill: cloneFill(currentFill),
+      outline: cloneFill(currentOutline),
+      outlineWidth: currentOutlineWidth,
       points: rectanglePoints,
     });
     nextShapeId += 1;
@@ -1783,11 +1916,16 @@ function initializeEditor() {
   zoomOutButton.addEventListener("click", () => changeZoom(-1));
   zoomResetButton.addEventListener("click", resetZoom);
   zoomInButton.addEventListener("click", () => changeZoom(1));
-  fillColorButton.addEventListener("click", () => {
-    setColorPopoverOpen(colorPopover.hidden);
+  fillColorButton.addEventListener("click", () => toggleColorPopover("fill"));
+  outlineColorButton.addEventListener("click", () => toggleColorPopover("outline"));
+  outlineWidthInput.addEventListener("input", (event) => {
+    applyOutlineWidth(event.target.value);
+  });
+  outlineWidthInput.addEventListener("blur", () => {
+    if (!applyOutlineWidth(outlineWidthInput.value)) updateColorControls();
   });
   fillTypeButtons.forEach((button) => {
-    button.addEventListener("click", () => setFillType(button.dataset.fillType));
+    button.addEventListener("click", () => setPaintType(button.dataset.fillType));
   });
   gradientStopButtons.forEach((button) => {
     button.addEventListener("click", () =>
@@ -1814,6 +1952,8 @@ function initializeEditor() {
         name: "Shape 1",
         kind: "path",
         fill: normalizeFill(),
+        outline: normalizeFill(undefined, DEFAULT_OUTLINE_COLOR),
+        outlineWidth: DEFAULT_OUTLINE_WIDTH,
         points: clonePoints(INITIAL_POINTS),
       },
     ];
@@ -1824,6 +1964,9 @@ function initializeEditor() {
     selectedIndices = new Set([0]);
     objectSelected = activeTool === "pointer";
     currentFill = normalizeFill();
+    currentOutline = normalizeFill(undefined, DEFAULT_OUTLINE_COLOR);
+    currentOutlineWidth = DEFAULT_OUTLINE_WIDTH;
+    activePaintTarget = "fill";
     activeColorStop = 0;
     draftRectangle = null;
     canvasHint.hidden = false;
@@ -1835,7 +1978,7 @@ function initializeEditor() {
     if (event.key === "Escape" && !colorPopover.hidden) {
       event.preventDefault();
       setColorPopoverOpen(false);
-      fillColorButton.focus();
+      (activePaintTarget === "outline" ? outlineColorButton : fillColorButton).focus();
       return;
     }
     if (event.target.closest("input, textarea, [contenteditable='true']")) return;
@@ -1868,6 +2011,8 @@ function initializeEditor() {
 
 const VectorEditorCore = {
   DEFAULT_FILL_COLOR,
+  DEFAULT_OUTLINE_COLOR,
+  DEFAULT_OUTLINE_WIDTH,
   FILL_TYPES,
   INITIAL_POINTS,
   absoluteHandle,
@@ -1894,6 +2039,7 @@ const VectorEditorCore = {
   cloneFill,
   normalizeFill,
   normalizeHexColor,
+  normalizeOutlineWidth,
   resizeShapePoints,
   scalePointsToBounds,
   setPointType,

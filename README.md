@@ -24,6 +24,8 @@ The prototype currently supports:
 - Holding `Shift` while drawing to constrain a rectangle to a perfect square
 - Selecting created shapes from the Objects rail
 - Setting each shape's fill with Scratch-style Color, Saturation, and Brightness sliders or a synchronized hex code
+- Setting a separate outline color with the same solid and gradient color controls
+- Adjusting each object's non-scaling outline thickness, starting at white and 8 pixels
 - Giving new objects the most recently chosen fill, starting with solid `#052d5c`
 - Creating left-to-right, top-to-bottom, and radial gradients with editable start and end colors
 - Switching nodes between Corner, Curve, and Uneven modes
@@ -37,7 +39,7 @@ The prototype currently supports:
 - Zooming from 50% to 400% with status-bar controls or `Ctrl`/`Command` + mouse wheel
 - Keeping node markers and curve-handle dots the same on-screen size at every zoom level
 - Resetting the example shape
-- Downloading all created shapes and their fill colors as an SVG with non-scaling outlines
+- Downloading all created shapes with their fills, outline colors, and non-scaling outline thicknesses as SVG
 
 ## Test
 

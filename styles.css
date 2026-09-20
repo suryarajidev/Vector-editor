@@ -10,6 +10,16 @@
   box-sizing: border-box;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -271,9 +281,7 @@ a:focus-visible {
 }
 
 .object-preview path {
-  stroke: #aef3ff;
   stroke-linejoin: round;
-  stroke-width: 12;
 }
 
 .object-name {
@@ -363,7 +371,13 @@ a:focus-visible {
   flex: 0 0 auto;
 }
 
-.fill-color-button {
+.paint-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paint-color-button {
   display: flex;
   min-height: 37px;
   align-items: center;
@@ -377,13 +391,13 @@ a:focus-visible {
   border-radius: 8px;
 }
 
-.fill-color-button:hover,
-.fill-color-button[aria-expanded="true"] {
+.paint-color-button:hover,
+.paint-color-button[aria-expanded="true"] {
   background: #2c323c;
   border-color: #536071;
 }
 
-.fill-color-button svg {
+.paint-color-button svg {
   width: 15px;
   fill: none;
   stroke: currentColor;
@@ -392,7 +406,7 @@ a:focus-visible {
   stroke-width: 1.8;
 }
 
-.fill-color-swatch,
+.paint-color-swatch,
 .color-preview {
   display: block;
   background: #052d5c;
@@ -400,10 +414,44 @@ a:focus-visible {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
 }
 
-.fill-color-swatch {
+.paint-color-swatch {
   width: 21px;
   height: 21px;
   border-radius: 6px;
+}
+
+.outline-color-swatch {
+  background: #ffffff;
+}
+
+.outline-width-field {
+  display: flex;
+  min-height: 37px;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 7px;
+  color: #9fabb8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #1d2229;
+  border: 1px solid #353c47;
+  border-radius: 8px;
+}
+
+.outline-width-field:focus-within {
+  border-color: #20bfe5;
+  box-shadow: 0 0 0 2px rgb(32 191 229 / 12%);
+}
+
+.outline-width-field input {
+  width: 42px;
+  padding: 4px 3px;
+  color: #eef7fb;
+  font: inherit;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  outline: 0;
 }
 
 .color-popover {
@@ -829,10 +877,8 @@ a:focus-visible {
 }
 
 .shape-path {
-  stroke: #263651;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 8;
   vector-effect: non-scaling-stroke;
   cursor: move;
 }
@@ -843,8 +889,6 @@ a:focus-visible {
 
 .draft-shape {
   fill-opacity: 0.28;
-  stroke: #00aeda;
-  stroke-width: 2;
   stroke-dasharray: 7 5;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -1461,13 +1505,21 @@ a:focus-visible {
     gap: 7px;
   }
 
-  .fill-color-button > span:not(.fill-color-swatch) {
+  .paint-color-button > span:not(.paint-color-swatch) {
     display: none;
   }
 
-  .fill-color-button {
+  .paint-color-button {
     gap: 4px;
     padding: 6px;
+  }
+
+  .outline-width-field {
+    padding-inline: 5px;
+  }
+
+  .outline-width-field input {
+    width: 34px;
   }
 
   .node-actions {

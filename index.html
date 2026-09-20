@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-proportional-resize" />
+    <link rel="stylesheet" href="styles.css?v=20260920-outline-controls" />
   </head>
   <body>
     <div class="app-shell">
@@ -73,28 +73,59 @@
               </div>
 
               <div class="color-control" id="color-control">
-                <button
-                  class="fill-color-button"
-                  id="fill-color-button"
-                  type="button"
-                  aria-haspopup="dialog"
-                  aria-expanded="false"
-                  title="Change fill color"
-                >
-                  <span class="fill-color-swatch" id="fill-color-swatch" aria-hidden="true"></span>
-                  <span>Fill</span>
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="m6 8 4 4 4-4" />
-                  </svg>
-                </button>
+                <div class="paint-controls">
+                  <button
+                    class="paint-color-button"
+                    id="fill-color-button"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    title="Change fill color"
+                  >
+                    <span class="paint-color-swatch" id="fill-color-swatch" aria-hidden="true"></span>
+                    <span>Fill</span>
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="m6 8 4 4 4-4" />
+                    </svg>
+                  </button>
+
+                  <button
+                    class="paint-color-button"
+                    id="outline-color-button"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    title="Change outline color"
+                  >
+                    <span class="paint-color-swatch outline-color-swatch" id="outline-color-swatch" aria-hidden="true"></span>
+                    <span>Outline</span>
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="m6 8 4 4 4-4" />
+                    </svg>
+                  </button>
+
+                  <label class="outline-width-field" title="Outline thickness">
+                    <span class="visually-hidden">Outline thickness</span>
+                    <input
+                      id="outline-width-input"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="8"
+                      aria-label="Outline thickness"
+                    />
+                    <span aria-hidden="true">px</span>
+                  </label>
+                </div>
 
                 <div class="color-popover" id="color-popover" role="dialog" aria-label="Fill color" hidden>
                   <div class="color-popover-heading">
-                    <strong>Fill color</strong>
+                    <strong id="color-popover-title">Fill color</strong>
                     <span class="color-preview" id="color-preview" aria-hidden="true"></span>
                   </div>
 
-                  <div class="fill-type-grid" role="group" aria-label="Fill style">
+                  <div class="fill-type-grid" id="paint-type-grid" role="group" aria-label="Fill style">
                     <button
                       class="is-active"
                       type="button"
@@ -421,6 +452,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-proportional-resize"></script>
+    <script src="app.js?v=20260920-outline-controls"></script>
   </body>
 </html>

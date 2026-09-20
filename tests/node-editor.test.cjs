@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const {
   DEFAULT_FILL_COLOR,
+  DEFAULT_OUTLINE_COLOR,
+  DEFAULT_OUTLINE_WIDTH,
   INITIAL_POINTS,
   calculateShapeBounds,
   clonePoints,
@@ -21,6 +23,7 @@ const {
   midpoint,
   normalizeFill,
   normalizeHexColor,
+  normalizeOutlineWidth,
   resizeShapePoints,
   scalePointsToBounds,
   setPointType,
@@ -31,6 +34,11 @@ const {
 const points = clonePoints(INITIAL_POINTS);
 
 assert.equal(DEFAULT_FILL_COLOR, "#052d5c");
+assert.equal(DEFAULT_OUTLINE_COLOR, "#ffffff");
+assert.equal(DEFAULT_OUTLINE_WIDTH, 8);
+assert.equal(normalizeOutlineWidth("12.5"), 12.5);
+assert.equal(normalizeOutlineWidth(150), 100);
+assert.equal(normalizeOutlineWidth("not-a-number"), 8);
 
 assert.equal(points.length, 7);
 assert.notEqual(points, INITIAL_POINTS);
@@ -146,6 +154,8 @@ assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
 assert.match(svg, /fill="#052d5c"/);
+assert.match(svg, /stroke="#ffffff"/);
+assert.match(svg, /stroke-width="8"/);
 assert.equal((svg.match(/<linearGradient/g) ?? []).length, 0);
 
 assert.equal(normalizeHexColor("a329d6"), "#a329d6");
@@ -292,6 +302,18 @@ assert.match(gradientSvg, /x1="0%" y1="0%" x2="0%" y2="100%"/);
 assert.match(gradientSvg, /<radialGradient id="shapeFill2" cx="50%" cy="50%" r="70%">/);
 assert.match(gradientSvg, /fill="url\(#shapeFill0\)"/);
 assert.match(gradientSvg, /stop-color="#12b5a6"/);
+
+const outlinedSvg = createDocumentSvg([
+  {
+    points: rectangle,
+    fill: { type: "solid", colors: ["#052d5c", "#ffffff"] },
+    outline: { type: "horizontal", colors: ["#ffffff", "#a329d6"] },
+    outlineWidth: 12.5,
+  },
+]);
+assert.match(outlinedSvg, /<linearGradient id="shapeOutline0"/);
+assert.match(outlinedSvg, /stroke="url\(#shapeOutline0\)"/);
+assert.match(outlinedSvg, /stroke-width="12.5"/);
 
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
 assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });
