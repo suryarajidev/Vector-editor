@@ -103,7 +103,9 @@
                       aria-pressed="true"
                       title="Solid fill"
                     >
-                      <span class="fill-type-icon fill-type-icon-solid" aria-hidden="true"></span>
+                      <svg class="fill-type-icon" viewBox="0 0 26 20" aria-hidden="true">
+                        <rect x="1" y="1" width="24" height="18" rx="3" fill="#cccccc" />
+                      </svg>
                     </button>
                     <button
                       type="button"
@@ -112,7 +114,15 @@
                       aria-pressed="false"
                       title="Left-to-right gradient"
                     >
-                      <span class="fill-type-icon fill-type-icon-horizontal" aria-hidden="true"></span>
+                      <svg class="fill-type-icon" viewBox="0 0 26 20" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="fill-icon-horizontal" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0" stop-color="#cccccc" />
+                            <stop offset="1" stop-color="#777777" />
+                          </linearGradient>
+                        </defs>
+                        <rect x="1" y="1" width="24" height="18" rx="3" fill="url(#fill-icon-horizontal)" />
+                      </svg>
                     </button>
                     <button
                       type="button"
@@ -121,7 +131,15 @@
                       aria-pressed="false"
                       title="Top-to-bottom gradient"
                     >
-                      <span class="fill-type-icon fill-type-icon-vertical" aria-hidden="true"></span>
+                      <svg class="fill-type-icon" viewBox="0 0 26 20" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="fill-icon-vertical" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0" stop-color="#cccccc" />
+                            <stop offset="1" stop-color="#777777" />
+                          </linearGradient>
+                        </defs>
+                        <rect x="1" y="1" width="24" height="18" rx="3" fill="url(#fill-icon-vertical)" />
+                      </svg>
                     </button>
                     <button
                       type="button"
@@ -130,20 +148,48 @@
                       aria-pressed="false"
                       title="Radial gradient"
                     >
-                      <span class="fill-type-icon fill-type-icon-radial" aria-hidden="true"></span>
+                      <svg class="fill-type-icon" viewBox="0 0 26 20" aria-hidden="true">
+                        <defs>
+                          <radialGradient id="fill-icon-radial" cx="50%" cy="50%" r="70%">
+                            <stop offset="0" stop-color="#777777" />
+                            <stop offset="1" stop-color="#cccccc" />
+                          </radialGradient>
+                        </defs>
+                        <rect x="1" y="1" width="24" height="18" rx="3" fill="url(#fill-icon-radial)" />
+                      </svg>
                     </button>
                   </div>
 
                   <div class="gradient-stops" id="gradient-stops" hidden>
                     <span>Gradient colors</span>
-                    <div>
-                      <button class="is-active" type="button" data-gradient-stop="0" aria-pressed="true">
+                    <div class="gradient-stop-controls">
+                      <button
+                        class="is-active"
+                        type="button"
+                        data-gradient-stop="0"
+                        aria-label="Start color"
+                        aria-pressed="true"
+                        title="Start color"
+                      >
                         <span class="gradient-stop-swatch" aria-hidden="true"></span>
-                        Start
                       </button>
-                      <button type="button" data-gradient-stop="1" aria-pressed="false">
+
+                      <svg class="gradient-direction-arrow gradient-direction-linear" viewBox="0 0 28 18" aria-hidden="true">
+                        <path d="M3 9h20m-6-5 6 5-6 5" />
+                      </svg>
+                      <svg class="gradient-direction-arrow gradient-direction-radial" viewBox="0 0 28 20" aria-hidden="true">
+                        <circle cx="14" cy="10" r="2" />
+                        <path d="m10 6-5-3m0 0 1 4M5 3l4-1m9 12 5 3m0 0-1-4m1 4-4 1" />
+                      </svg>
+
+                      <button
+                        type="button"
+                        data-gradient-stop="1"
+                        aria-label="End color"
+                        aria-pressed="false"
+                        title="End color"
+                      >
                         <span class="gradient-stop-swatch" aria-hidden="true"></span>
-                        End
                       </button>
                     </div>
                   </div>

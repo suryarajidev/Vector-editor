@@ -478,25 +478,13 @@ a:focus-visible {
   display: block;
   width: 25px;
   height: 19px;
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 3px;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
+  overflow: visible;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 70%));
 }
 
-.fill-type-icon-solid {
-  background: #cccccc;
-}
-
-.fill-type-icon-horizontal {
-  background: linear-gradient(90deg, #cccccc, #777777);
-}
-
-.fill-type-icon-vertical {
-  background: linear-gradient(180deg, #cccccc, #777777);
-}
-
-.fill-type-icon-radial {
-  background: radial-gradient(circle, #777777 0 35%, #cccccc 72%);
+.fill-type-icon rect {
+  stroke: rgb(255 255 255 / 72%);
+  stroke-width: 1;
 }
 
 .gradient-stops {
@@ -518,24 +506,21 @@ a:focus-visible {
   font-weight: 700;
 }
 
-.gradient-stops > div {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
+.gradient-stop-controls {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 
 .gradient-stops button {
-  display: flex;
-  min-height: 35px;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
-  color: #c4d0db;
-  font-size: 0.68rem;
-  font-weight: 720;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
   background: #282e37;
   border: 1px solid transparent;
   border-radius: 7px;
+  place-items: center;
 }
 
 .gradient-stops button:hover {
@@ -549,12 +534,42 @@ a:focus-visible {
 
 .gradient-stop-swatch {
   display: block;
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
   background: #052d5c;
   border: 2px solid rgb(255 255 255 / 72%);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 42%);
+}
+
+.gradient-direction-arrow {
+  width: 28px;
+  height: 20px;
+  fill: none;
+  stroke: #8de8fa;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.gradient-direction-linear {
+  transition: transform 160ms ease;
+}
+
+.color-popover:has([data-fill-type="vertical"].is-active) .gradient-direction-linear {
+  transform: rotate(90deg);
+}
+
+.gradient-direction-radial {
+  display: none;
+}
+
+.color-popover:has([data-fill-type="radial"].is-active) .gradient-direction-linear {
+  display: none;
+}
+
+.color-popover:has([data-fill-type="radial"].is-active) .gradient-direction-radial {
+  display: block;
 }
 
 .color-slider-row {
