@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-alt-drag" />
+    <link rel="stylesheet" href="styles.css?v=20260920-rotate" />
   </head>
   <body>
     <div class="app-shell">
@@ -252,6 +252,43 @@
                   </label>
                 </div>
               </div>
+
+              <div class="transform-controls" id="transform-controls" aria-label="Object transform controls" hidden>
+                <button class="transform-button" id="rotate-ccw-90" type="button" data-rotate-only aria-label="Rotate 90 degrees counterclockwise" title="Rotate 90° counterclockwise">
+                  <span class="rotation-glyph" aria-hidden="true">↶</span>
+                  <span>90°</span>
+                </button>
+                <button class="transform-button" id="rotate-ccw-45" type="button" data-rotate-only aria-label="Rotate 45 degrees counterclockwise" title="Rotate 45° counterclockwise">
+                  <span class="rotation-glyph" aria-hidden="true">↶</span>
+                  <span>45°</span>
+                </button>
+
+                <div class="custom-rotation-control" data-rotate-only>
+                  <input id="custom-rotation-input" type="number" min="-360" max="360" step="1" value="30" aria-label="Custom rotation degrees" />
+                  <span aria-hidden="true">°</span>
+                  <button id="rotate-custom" type="button" aria-label="Rotate by custom degrees" title="Rotate by custom degrees">Apply</button>
+                </div>
+
+                <button class="transform-button" id="rotate-cw-45" type="button" data-rotate-only aria-label="Rotate 45 degrees clockwise" title="Rotate 45° clockwise">
+                  <span class="rotation-glyph" aria-hidden="true">↷</span>
+                  <span>45°</span>
+                </button>
+                <button class="transform-button" id="rotate-cw-90" type="button" data-rotate-only aria-label="Rotate 90 degrees clockwise" title="Rotate 90° clockwise">
+                  <span class="rotation-glyph" aria-hidden="true">↷</span>
+                  <span>90°</span>
+                </button>
+                <span class="transform-divider" data-rotate-only aria-hidden="true"></span>
+                <button class="transform-button transform-button-icon" id="flip-horizontal" type="button" aria-label="Flip horizontally" title="Flip horizontally">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v18M4 6h5v12H4zm16 0h-5v12h5z" />
+                  </svg>
+                </button>
+                <button class="transform-button transform-button-icon" id="flip-vertical" type="button" aria-label="Flip vertically" title="Flip vertically">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 12h18M6 4v5h12V4zm0 16v-5h12v5z" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div class="node-actions" aria-label="Node actions">
@@ -298,6 +335,19 @@
                   <circle cx="19" cy="6" r="2" />
                   <circle cx="5" cy="18" r="2" />
                   <circle cx="19" cy="18" r="2" />
+                </svg>
+              </button>
+              <button
+                class="tool-button"
+                id="tool-rotate"
+                type="button"
+                aria-label="Rotate tool"
+                aria-pressed="false"
+                title="Rotate tool"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 8V4m0 0h-4m4 0-3.1 3.1A7 7 0 1 0 19 13" />
+                  <circle cx="12" cy="13" r="2.5" />
                 </svg>
               </button>
               <button
@@ -478,6 +528,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-alt-drag"></script>
+    <script src="app.js?v=20260920-rotate"></script>
   </body>
 </html>

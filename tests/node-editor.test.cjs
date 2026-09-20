@@ -23,6 +23,7 @@ const {
   cubicPointAt,
   duplicateShape,
   findClosestSegment,
+  flipShapePoints,
   hexToHsb,
   hsbToHex,
   midpoint,
@@ -30,6 +31,8 @@ const {
   normalizeHexColor,
   normalizeOutlineWidth,
   resizeShapePoints,
+  rotateShapePoints,
+  rotateVector,
   scalePointsToBounds,
   setPointType,
   splitSegment,
@@ -71,6 +74,46 @@ assert.notEqual(copiedShape.points, originalShape.points);
 assert.notEqual(copiedShape.points[0], originalShape.points[0]);
 copiedShape.points[0].x = 999;
 assert.equal(originalShape.points[0].x, INITIAL_POINTS[0].x);
+
+const transformSquare = [
+  { x: 0, y: 0, type: "corner", handleIn: null, handleOut: { x: 2, y: 0 } },
+  { x: 10, y: 0, type: "corner", handleIn: null, handleOut: null },
+  { x: 10, y: 10, type: "corner", handleIn: null, handleOut: null },
+  { x: 0, y: 10, type: "corner", handleIn: null, handleOut: null },
+];
+assert.deepEqual(rotateVector({ x: 2, y: 3 }, 90), { x: -3, y: 2 });
+const rotatedSquare = rotateShapePoints(transformSquare, 90);
+assert.deepEqual(
+  rotatedSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 10, y: 0 },
+    { x: 10, y: 10 },
+    { x: 0, y: 10 },
+    { x: 0, y: 0 },
+  ],
+);
+assert.deepEqual(rotatedSquare[0].handleOut, { x: 0, y: 2 });
+const horizontallyFlippedSquare = flipShapePoints(transformSquare, "horizontal");
+assert.deepEqual(
+  horizontallyFlippedSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 10, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 10 },
+    { x: 10, y: 10 },
+  ],
+);
+assert.deepEqual(horizontallyFlippedSquare[0].handleOut, { x: -2, y: 0 });
+const verticallyFlippedSquare = flipShapePoints(transformSquare, "vertical");
+assert.deepEqual(
+  verticallyFlippedSquare.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 0, y: 10 },
+    { x: 10, y: 10 },
+    { x: 10, y: 0 },
+    { x: 0, y: 0 },
+  ],
+);
 
 assert.equal(
   createPathData([

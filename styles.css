@@ -371,6 +371,120 @@ a:focus-visible {
   flex: 0 0 auto;
 }
 
+.transform-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.transform-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.transform-controls[hidden],
+[data-rotate-only][hidden] {
+  display: none;
+}
+
+.transform-button,
+.custom-rotation-control,
+.custom-rotation-control button {
+  min-height: 37px;
+  color: #dce7ef;
+  font-size: 0.7rem;
+  font-weight: 740;
+  background: #242932;
+  border: 1px solid #353c47;
+  border-radius: 8px;
+}
+
+.transform-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.transform-button:hover,
+.custom-rotation-control button:hover {
+  background: #2c323c;
+  border-color: #536071;
+}
+
+.transform-button:disabled,
+.custom-rotation-control:has(input:disabled),
+.custom-rotation-control button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.rotation-glyph {
+  color: #71ddf4;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.transform-button-icon {
+  width: 37px;
+  padding: 0;
+}
+
+.transform-button-icon svg {
+  width: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.custom-rotation-control {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding-left: 6px;
+  color: #9fabb8;
+  background: #1d2229;
+}
+
+.custom-rotation-control:focus-within {
+  border-color: #20bfe5;
+  box-shadow: 0 0 0 2px rgb(32 191 229 / 12%);
+}
+
+.custom-rotation-control input {
+  width: 44px;
+  padding: 4px 2px;
+  color: #eef7fb;
+  font: inherit;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.custom-rotation-control button {
+  min-height: 29px;
+  margin: 3px;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.transform-divider {
+  width: 1px;
+  height: 25px;
+  flex: 0 0 auto;
+  margin: 0 2px;
+  background: #353c47;
+}
+
 .paint-controls {
   display: flex;
   align-items: center;
@@ -944,6 +1058,45 @@ a:focus-visible {
   cursor: nesw-resize;
 }
 
+.rotation-guide {
+  fill: none;
+  stroke: #00aeda;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.rotation-handle {
+  cursor: grab;
+  outline: none;
+}
+
+.rotation-handle:active {
+  cursor: grabbing;
+}
+
+.rotation-handle circle {
+  fill: #ffffff;
+  stroke: #008fb7;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.rotation-handle:hover circle,
+.rotation-handle:focus-visible circle {
+  fill: #c9f7ff;
+  stroke: #006f91;
+}
+
+.rotation-center {
+  fill: #08aeda;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 .segment-hit {
   fill: none;
   stroke: transparent;
@@ -961,6 +1114,10 @@ a:focus-visible {
 #editor-canvas.tool-pointer .control-handle,
 #editor-canvas.tool-pointer .handle-guide,
 #editor-canvas.tool-pointer .segment-hit,
+#editor-canvas.tool-rotate .node,
+#editor-canvas.tool-rotate .control-handle,
+#editor-canvas.tool-rotate .handle-guide,
+#editor-canvas.tool-rotate .segment-hit,
 #editor-canvas.tool-drawing .node,
 #editor-canvas.tool-drawing .control-handle,
 #editor-canvas.tool-drawing .handle-guide,
@@ -971,6 +1128,14 @@ a:focus-visible {
 #editor-canvas.tool-drawing,
 #editor-canvas.tool-drawing .shape-path {
   cursor: crosshair;
+}
+
+#editor-canvas.tool-rotate .shape-path {
+  cursor: grab;
+}
+
+#editor-canvas.tool-rotate.is-rotating .shape-path {
+  cursor: grabbing;
 }
 
 .handle-guide {

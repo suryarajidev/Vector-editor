@@ -376,6 +376,67 @@ function resizeShapePoints(
   return scalePointsToBounds(points, source, target);
 }
 
+function rotateVector(vector, angleDegrees) {
+  if (!vector) return null;
+  const radians = (angleDegrees * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return {
+    x: roundValue(vector.x * cosine - vector.y * sine),
+    y: roundValue(vector.x * sine + vector.y * cosine),
+  };
+}
+
+function rotateShapePoints(points, angleDegrees, center = null) {
+  if (!points.length) return [];
+  const bounds = calculateShapeBounds(points);
+  const rotationCenter = center ?? {
+    x: (bounds.left + bounds.right) / 2,
+    y: (bounds.top + bounds.bottom) / 2,
+  };
+  const radians = (angleDegrees * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+
+  return points.map((point) => {
+    const offsetX = point.x - rotationCenter.x;
+    const offsetY = point.y - rotationCenter.y;
+    return {
+      ...point,
+      x: roundValue(rotationCenter.x + offsetX * cosine - offsetY * sine),
+      y: roundValue(rotationCenter.y + offsetX * sine + offsetY * cosine),
+      handleIn: rotateVector(point.handleIn, angleDegrees),
+      handleOut: rotateVector(point.handleOut, angleDegrees),
+    };
+  });
+}
+
+function flipShapePoints(points, direction) {
+  if (!points.length || !["horizontal", "vertical"].includes(direction)) return clonePoints(points);
+  const bounds = calculateShapeBounds(points);
+  const centerX = (bounds.left + bounds.right) / 2;
+  const centerY = (bounds.top + bounds.bottom) / 2;
+  const flipX = direction === "horizontal";
+
+  return points.map((point) => ({
+    ...point,
+    x: roundValue(flipX ? centerX * 2 - point.x : point.x),
+    y: roundValue(flipX ? point.y : centerY * 2 - point.y),
+    handleIn: point.handleIn
+      ? {
+          x: roundValue(flipX ? -point.handleIn.x : point.handleIn.x),
+          y: roundValue(flipX ? point.handleIn.y : -point.handleIn.y),
+        }
+      : null,
+    handleOut: point.handleOut
+      ? {
+          x: roundValue(flipX ? -point.handleOut.x : point.handleOut.x),
+          y: roundValue(flipX ? point.handleOut.y : -point.handleOut.y),
+        }
+      : null,
+  }));
+}
+
 function createRectanglePoints(
   start,
   end,
@@ -817,6 +878,7 @@ function initializeEditor() {
   const unevenButton = document.querySelector("#node-type-uneven");
   const pointerToolButton = document.querySelector("#tool-pointer");
   const nodeToolButton = document.querySelector("#tool-node");
+  const rotateToolButton = document.querySelector("#tool-rotate");
   const rectangleToolButton = document.querySelector("#tool-rectangle");
   const circleToolButton = document.querySelector("#tool-circle");
   const lineToolButton = document.querySelector("#tool-line");
@@ -840,6 +902,16 @@ function initializeEditor() {
   const objectList = document.querySelector("#object-list");
   const objectCount = document.querySelector("#object-count");
   const colorControl = document.querySelector("#color-control");
+  const transformControls = document.querySelector("#transform-controls");
+  const rotateOnlyControls = [...document.querySelectorAll("[data-rotate-only]")];
+  const rotateCounterclockwise90Button = document.querySelector("#rotate-ccw-90");
+  const rotateCounterclockwise45Button = document.querySelector("#rotate-ccw-45");
+  const rotateClockwise45Button = document.querySelector("#rotate-cw-45");
+  const rotateClockwise90Button = document.querySelector("#rotate-cw-90");
+  const customRotationInput = document.querySelector("#custom-rotation-input");
+  const customRotationButton = document.querySelector("#rotate-custom");
+  const flipHorizontalButton = document.querySelector("#flip-horizontal");
+  const flipVerticalButton = document.querySelector("#flip-vertical");
   const fillColorButton = document.querySelector("#fill-color-button");
   const fillColorSwatch = document.querySelector("#fill-color-swatch");
   const outlineColorButton = document.querySelector("#outline-color-button");
@@ -1422,7 +1494,9 @@ function initializeEditor() {
 
   function renderTransformBox() {
     transformLayer.replaceChildren();
-    if (activeTool !== "pointer" || !objectSelected || !points.length) return;
+    if (!["pointer", "rotate"].includes(activeTool) || !objectSelected || !points.length) {
+      return;
+    }
     const bounds = calculateShapeBounds(points);
     if (!bounds) return;
 
@@ -1438,6 +1512,36 @@ function initializeEditor() {
 
     const centerX = (bounds.left + bounds.right) / 2;
     const centerY = (bounds.top + bounds.bottom) / 2;
+
+    if (activeTool === "rotate") {
+      const handleY = bounds.top - 32 / zoom;
+      transformLayer.append(
+        createSvgElement("path", {
+          class: "rotation-guide",
+          d: `M ${formatNumber(centerX)} ${formatNumber(bounds.top)} L ${formatNumber(centerX)} ${formatNumber(handleY)}`,
+        }),
+      );
+      const rotationHandle = createSvgElement("g", {
+        class: "rotation-handle",
+        transform: `translate(${formatNumber(centerX)} ${formatNumber(handleY)}) scale(${formatNumber(1 / zoom)})`,
+        "data-rotate-handle": "true",
+        role: "button",
+        tabindex: "0",
+        "aria-label": "Drag to rotate the selected object",
+      });
+      rotationHandle.append(createSvgElement("circle", { r: "7" }));
+      transformLayer.append(
+        rotationHandle,
+        createSvgElement("circle", {
+          class: "rotation-center",
+          cx: formatNumber(centerX),
+          cy: formatNumber(centerY),
+          r: formatNumber(4 / zoom),
+        }),
+      );
+      return;
+    }
+
     const handles = [
       ["nw", bounds.left, bounds.top, "Proportionally resize from top-left corner"],
       ["n", centerX, bounds.top, "Stretch from top edge"],
@@ -1554,14 +1658,34 @@ function initializeEditor() {
 
     const isNodeTool = activeTool === "node";
     const isPointerTool = activeTool === "pointer";
+    const isRotateTool = activeTool === "rotate";
     const isRectangleTool = activeTool === "rectangle";
     const isCircleTool = activeTool === "circle";
     const isLineTool = activeTool === "line";
     const isDrawingTool = isRectangleTool || isCircleTool || isLineTool;
+    const isObjectTool = isPointerTool || isRotateTool;
+    const hasObjectSelection = objectSelected && shapes.length > 0;
     addNodeButton.hidden = !isNodeTool;
+    colorControl.hidden = isRotateTool;
+    transformControls.hidden = !isObjectTool;
+    rotateOnlyControls.forEach((control) => {
+      control.hidden = !isRotateTool;
+    });
+    [
+      rotateCounterclockwise90Button,
+      rotateCounterclockwise45Button,
+      rotateClockwise45Button,
+      rotateClockwise90Button,
+      customRotationInput,
+      customRotationButton,
+      flipHorizontalButton,
+      flipVerticalButton,
+    ].forEach((control) => {
+      control.disabled = !hasObjectSelection;
+    });
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
-    nodeActions.hidden = isDrawingTool;
+    nodeActions.hidden = isDrawingTool || isRotateTool;
     nodeActions.setAttribute("aria-label", isPointerTool ? "Object actions" : "Node actions");
     deselectButton.hidden = !isNodeTool;
     deleteButton.disabled = isNodeTool
@@ -1574,18 +1698,22 @@ function initializeEditor() {
     deleteButton.title = isPointerTool ? "Delete selected object" : "Delete selected nodes";
     svg.classList.toggle("tool-node", isNodeTool);
     svg.classList.toggle("tool-pointer", isPointerTool);
+    svg.classList.toggle("tool-rotate", isRotateTool);
     svg.classList.toggle("tool-rectangle", isRectangleTool);
     svg.classList.toggle("tool-circle", isCircleTool);
     svg.classList.toggle("tool-line", isLineTool);
     svg.classList.toggle("tool-drawing", isDrawingTool);
     svg.classList.toggle("is-dragging-canvas", dragging?.kind === "pan");
+    svg.classList.toggle("is-rotating", dragging?.kind === "rotate");
     pointerToolButton.classList.toggle("is-active", isPointerTool);
     nodeToolButton.classList.toggle("is-active", isNodeTool);
+    rotateToolButton.classList.toggle("is-active", isRotateTool);
     rectangleToolButton.classList.toggle("is-active", isRectangleTool);
     circleToolButton.classList.toggle("is-active", isCircleTool);
     lineToolButton.classList.toggle("is-active", isLineTool);
     pointerToolButton.setAttribute("aria-pressed", String(isPointerTool));
     nodeToolButton.setAttribute("aria-pressed", String(isNodeTool));
+    rotateToolButton.setAttribute("aria-pressed", String(isRotateTool));
     rectangleToolButton.setAttribute("aria-pressed", String(isRectangleTool));
     circleToolButton.setAttribute("aria-pressed", String(isCircleTool));
     lineToolButton.setAttribute("aria-pressed", String(isLineTool));
@@ -1594,6 +1722,10 @@ function initializeEditor() {
       isPointerTool ? "Pointer tool selected" : "Pointer tool",
     );
     nodeToolButton.setAttribute("aria-label", isNodeTool ? "Node tool selected" : "Node tool");
+    rotateToolButton.setAttribute(
+      "aria-label",
+      isRotateTool ? "Rotate tool selected" : "Rotate tool",
+    );
     rectangleToolButton.setAttribute(
       "aria-label",
       isRectangleTool ? "Rectangle tool selected" : "Rectangle tool",
@@ -1612,6 +1744,13 @@ function initializeEditor() {
       toolDescription.textContent = "Edit one or more points on the shape";
       toolStatus.textContent = "Node editing";
       canvasHintText.textContent = "Drag or scroll to pan · Shift-click nodes for multiple selection";
+    } else if (isRotateTool) {
+      toolName.textContent = "Rotate tool";
+      toolDescription.textContent = "Rotate or flip the selected object";
+      toolStatus.textContent = "Rotation editing";
+      canvasHintText.textContent = objectSelected
+        ? "Drag the rotation handle or shape · hold Shift to snap by 15°"
+        : "Click an object to select it · scroll to pan";
     } else if (isRectangleTool) {
       toolName.textContent = "Rectangle tool";
       toolDescription.textContent = "Drag to create a rectangle";
@@ -1654,18 +1793,24 @@ function initializeEditor() {
     activeTool = tool;
     dragging = null;
     draftShape = null;
-    if (tool === "pointer") {
+    if (["pointer", "rotate"].includes(tool)) {
       objectSelected = shapes.length > 0;
       if (objectSelected) {
         selectedIndices = new Set(points.map((_, index) => index));
         selectedIndex = 0;
       }
     }
+    if (tool === "rotate" && !colorPopover.hidden) {
+      colorPopover.hidden = true;
+      fillColorButton.setAttribute("aria-expanded", "false");
+      outlineColorButton.setAttribute("aria-expanded", "false");
+    }
     canvasHint.hidden = false;
     render();
     const messages = {
       node: "Node tool selected",
       pointer: "Pointer tool selected",
+      rotate: "Rotate tool selected",
       rectangle: "Rectangle tool selected — hold Shift for a square",
       circle: "Circle tool selected — hold Shift for a perfect circle",
       line: "Line tool selected",
@@ -1701,6 +1846,44 @@ function initializeEditor() {
       y: point.y,
     }));
     dragState.duplicated = true;
+  }
+
+  function applyObjectTransform(nextPoints, message) {
+    if (!objectSelected || activeShapeIndex < 0 || !shapes[activeShapeIndex]) {
+      announce("Select an object first");
+      return false;
+    }
+
+    const previousState = captureUndoState();
+    shapes[activeShapeIndex].points = nextPoints;
+    points = nextPoints;
+    selectedIndex = 0;
+    selectedIndices = new Set(points.map((_, index) => index));
+    const changed = recordUndoState(previousState);
+    render();
+    if (changed) announce(message);
+    return changed;
+  }
+
+  function rotateActiveShape(angleDegrees) {
+    const angle = clamp(Number(angleDegrees), -360, 360);
+    if (!Number.isFinite(angle) || angle === 0) {
+      announce("Enter a non-zero rotation from -360° to 360°");
+      return;
+    }
+    const direction = angle > 0 ? "clockwise" : "counterclockwise";
+    applyObjectTransform(
+      rotateShapePoints(points, angle),
+      `Rotated ${formatNumber(Math.abs(angle))}° ${direction}`,
+    );
+  }
+
+  function flipActiveShape(direction) {
+    const directionLabel = direction === "horizontal" ? "horizontally" : "vertically";
+    applyObjectTransform(
+      flipShapePoints(points, direction),
+      `Flipped ${directionLabel}`,
+    );
   }
 
   function updateDrag(event) {
@@ -1762,6 +1945,39 @@ function initializeEditor() {
           constrained: false,
         };
       }
+      canvasHint.hidden = true;
+      render();
+      return;
+    }
+
+    if (dragging.kind === "rotate") {
+      const screenDistance = Math.hypot(
+        event.clientX - dragging.startClient.x,
+        event.clientY - dragging.startClient.y,
+      );
+      if (!dragging.moved && screenDistance < 3) return;
+
+      let angle =
+        ((Math.atan2(
+          pointer.y - dragging.center.y,
+          pointer.x - dragging.center.x,
+        ) -
+          dragging.startAngle) *
+          180) /
+        Math.PI;
+      if (angle > 180) angle -= 360;
+      if (angle < -180) angle += 360;
+      if (event.shiftKey) angle = Math.round(angle / 15) * 15;
+      dragging.moved = true;
+      dragging.rotationDegrees = roundValue(angle);
+      const rotatedPoints = rotateShapePoints(
+        dragging.startPoints,
+        angle,
+        dragging.center,
+      );
+      shapes[activeShapeIndex].points = rotatedPoints;
+      points = rotatedPoints;
+      selectedIndices = new Set(points.map((_, index) => index));
       canvasHint.hidden = true;
       render();
       return;
@@ -2098,6 +2314,10 @@ function initializeEditor() {
       activeTool === "pointer"
         ? event.target.closest?.("[data-resize-handle]")
         : null;
+    const rotationControl =
+      activeTool === "rotate"
+        ? event.target.closest?.("[data-rotate-handle]")
+        : null;
     const segment = event.target.closest?.("[data-segment-index]");
     const shapeElement = event.target.closest?.("[data-shape-index]");
     event.preventDefault();
@@ -2120,6 +2340,29 @@ function initializeEditor() {
             ? createEllipsePoints(pointer, pointer, event.shiftKey)
             : createLinePoints(pointer, pointer),
         constrained: drawingKind !== "line" && event.shiftKey,
+      };
+      render();
+    } else if (activeTool === "rotate" && (rotationControl || shapeElement)) {
+      if (shapeElement) {
+        activeShapeIndex = Number(shapeElement.dataset.shapeIndex);
+        points = shapes[activeShapeIndex].points;
+      }
+      objectSelected = true;
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+      const bounds = calculateShapeBounds(points);
+      const center = {
+        x: (bounds.left + bounds.right) / 2,
+        y: (bounds.top + bounds.bottom) / 2,
+      };
+      dragging = {
+        kind: "rotate",
+        moved: false,
+        center,
+        startAngle: Math.atan2(pointer.y - center.y, pointer.x - center.x),
+        startPoints: clonePoints(points),
+        startClient: { x: event.clientX, y: event.clientY },
+        undoState: captureUndoState(),
       };
       render();
     } else if (resizeControl && objectSelected) {
@@ -2244,7 +2487,7 @@ function initializeEditor() {
     }
 
     if (completedDrag.kind === "pan" && !completedDrag.moved) {
-      if (activeTool === "pointer") {
+      if (["pointer", "rotate"].includes(activeTool)) {
         const hadSelection = objectSelected;
         objectSelected = false;
         selectedIndices.clear();
@@ -2283,10 +2526,16 @@ function initializeEditor() {
       return;
     }
 
-    if (completedDrag.moved) recordUndoState(completedDrag.undoState);
+    const changed = completedDrag.moved
+      ? recordUndoState(completedDrag.undoState)
+      : false;
     render();
-    if (completedDrag.duplicated) {
+    if (completedDrag.duplicated && changed) {
       announce(`Duplicated ${shapes[activeShapeIndex].name}`);
+    } else if (completedDrag.kind === "rotate" && changed) {
+      const angle = completedDrag.rotationDegrees ?? 0;
+      const direction = angle >= 0 ? "clockwise" : "counterclockwise";
+      announce(`Rotated ${formatNumber(Math.abs(angle))}° ${direction}`);
     }
   });
 
@@ -2347,6 +2596,7 @@ function initializeEditor() {
   unevenButton.addEventListener("click", () => changeSelectedNodeType("asymmetric"));
   pointerToolButton.addEventListener("click", () => setActiveTool("pointer"));
   nodeToolButton.addEventListener("click", () => setActiveTool("node"));
+  rotateToolButton.addEventListener("click", () => setActiveTool("rotate"));
   rectangleToolButton.addEventListener("click", () => setActiveTool("rectangle"));
   circleToolButton.addEventListener("click", () => setActiveTool("circle"));
   lineToolButton.addEventListener("click", () => setActiveTool("line"));
@@ -2361,6 +2611,20 @@ function initializeEditor() {
   zoomInButton.addEventListener("click", () => changeZoom(1));
   fillColorButton.addEventListener("click", () => toggleColorPopover("fill"));
   outlineColorButton.addEventListener("click", () => toggleColorPopover("outline"));
+  rotateCounterclockwise90Button.addEventListener("click", () => rotateActiveShape(-90));
+  rotateCounterclockwise45Button.addEventListener("click", () => rotateActiveShape(-45));
+  rotateClockwise45Button.addEventListener("click", () => rotateActiveShape(45));
+  rotateClockwise90Button.addEventListener("click", () => rotateActiveShape(90));
+  customRotationButton.addEventListener("click", () =>
+    rotateActiveShape(customRotationInput.value),
+  );
+  customRotationInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    rotateActiveShape(customRotationInput.value);
+  });
+  flipHorizontalButton.addEventListener("click", () => flipActiveShape("horizontal"));
+  flipVerticalButton.addEventListener("click", () => flipActiveShape("vertical"));
   outlineWidthInput.addEventListener("input", (event) => {
     applyOutlineWidth(event.target.value);
   });
@@ -2492,6 +2756,7 @@ const VectorEditorCore = {
   cubicPointAt,
   duplicateShape,
   findClosestSegment,
+  flipShapePoints,
   fillCssBackground,
   fillPaintValue,
   hexToHsb,
@@ -2502,6 +2767,8 @@ const VectorEditorCore = {
   normalizeHexColor,
   normalizeOutlineWidth,
   resizeShapePoints,
+  rotateShapePoints,
+  rotateVector,
   scalePointsToBounds,
   setPointType,
   splitSegment,
