@@ -13,8 +13,10 @@ const {
   constrainTranslation,
   createArtworkSvg,
   createDocumentSvg,
+  createEllipsePoints,
   createGradientEndColor,
   createGradientMarkup,
+  createLinePoints,
   createPathData,
   createRectanglePoints,
   createZoomViewBox,
@@ -188,6 +190,47 @@ assert.match(
 );
 
 const rectangle = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
+const line = createLinePoints({ x: 10, y: 20 }, { x: 100, y: 70 });
+assert.deepEqual(
+  line.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 18, y: 20 },
+    { x: 100, y: 70 },
+  ],
+);
+assert.equal(createPathData(line, false), "M 18 20 L 100 70");
+const splitLine = clonePoints(line);
+assert.equal(splitSegment(splitLine, 0, 0.5, false), 1);
+assert.deepEqual(
+  splitLine.map(({ x, y }) => ({ x, y })),
+  [
+    { x: 18, y: 20 },
+    { x: 59, y: 45 },
+    { x: 100, y: 70 },
+  ],
+);
+
+const ellipse = createEllipsePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
+assert.deepEqual(calculateShapeBounds(ellipse), {
+  left: 100,
+  top: 100,
+  right: 180,
+  bottom: 140,
+  width: 80,
+  height: 40,
+});
+assert.equal(ellipse.length, 4);
+assert.ok(ellipse.every((point) => point.type === "smooth"));
+assert.match(createPathData(ellipse), /^M 140 100 C /);
+const circle = createEllipsePoints({ x: 100, y: 100 }, { x: 180, y: 140 }, true);
+assert.deepEqual(calculateShapeBounds(circle), {
+  left: 100,
+  top: 100,
+  right: 180,
+  bottom: 180,
+  width: 80,
+  height: 80,
+});
 assert.deepEqual(calculateShapeBounds(rectangle), {
   left: 100,
   top: 100,
@@ -332,6 +375,18 @@ const outlinedSvg = createDocumentSvg([
 assert.match(outlinedSvg, /<linearGradient id="shapeOutline0"/);
 assert.match(outlinedSvg, /stroke="url\(#shapeOutline0\)"/);
 assert.match(outlinedSvg, /stroke-width="12.5"/);
+
+const lineSvg = createDocumentSvg([
+  {
+    points: line,
+    closed: false,
+    fillEnabled: false,
+    outline: { type: "solid", colors: ["#ffffff", "#a329d6"] },
+    outlineWidth: 4,
+  },
+]);
+assert.match(lineSvg, /d="M 18 20 L 100 70" fill="none"/);
+assert.doesNotMatch(lineSvg, /L 100 70 Z/);
 
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
 assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });

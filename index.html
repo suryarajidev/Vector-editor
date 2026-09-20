@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-wheel-pan" />
+    <link rel="stylesheet" href="styles.css?v=20260920-line-circle" />
   </head>
   <body>
     <div class="app-shell">
@@ -312,6 +312,32 @@
                   <rect x="5" y="6" width="14" height="12" rx="1" />
                 </svg>
               </button>
+              <button
+                class="tool-button"
+                id="tool-circle"
+                type="button"
+                aria-label="Circle tool"
+                aria-pressed="false"
+                title="Circle tool (hold Shift for a perfect circle)"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <ellipse cx="12" cy="12" rx="7" ry="6" />
+                </svg>
+              </button>
+              <button
+                class="tool-button"
+                id="tool-line"
+                type="button"
+                aria-label="Line tool"
+                aria-pressed="false"
+                title="Line tool"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 18 19 6" />
+                  <circle cx="5" cy="18" r="1.5" />
+                  <circle cx="19" cy="6" r="1.5" />
+                </svg>
+              </button>
               <span class="tool-divider" aria-hidden="true"></span>
               <button class="tool-button" id="tool-add-node" type="button" aria-label="Add node" title="Add node">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -452,6 +478,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-wheel-pan"></script>
+    <script src="app.js?v=20260920-line-circle"></script>
   </body>
 </html>

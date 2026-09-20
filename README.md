@@ -24,6 +24,8 @@ The prototype currently supports:
 - Clicking the checkerboard or using Deselect to clear the node selection
 - Drawing additional rectangles with the Rectangle tool
 - Holding `Shift` while drawing to constrain a rectangle to a perfect square
+- Drawing ellipses with the Circle tool and holding `Shift` for a perfect circle
+- Drawing open, two-node paths with the Line tool and the current outline settings
 - Selecting created shapes from the Objects rail
 - Setting each shape's fill with Scratch-style Color, Saturation, and Brightness sliders or a synchronized hex code
 - Setting a separate outline color with the same solid and gradient color controls
@@ -36,7 +38,7 @@ The prototype currently supports:
 - Clicking a straight or curved edge to insert a node without changing its shape
 - Editing the selected node's X and Y coordinates
 - Adding a curve-preserving midpoint node from the left toolbar
-- Deleting nodes while preserving the three-node minimum for a closed shape
+- Deleting nodes while preserving the three-node minimum for closed shapes and two-node minimum for open paths
 - Nudging nodes with the arrow keys (`Shift` moves 10 pixels)
 - Zooming from 50% to 400% with status-bar controls or `Ctrl`/`Command` + mouse wheel
 - Keeping node markers and curve-handle dots the same on-screen size at every zoom level

@@ -957,15 +957,15 @@ a:focus-visible {
 #editor-canvas.tool-pointer .control-handle,
 #editor-canvas.tool-pointer .handle-guide,
 #editor-canvas.tool-pointer .segment-hit,
-#editor-canvas.tool-rectangle .node,
-#editor-canvas.tool-rectangle .control-handle,
-#editor-canvas.tool-rectangle .handle-guide,
-#editor-canvas.tool-rectangle .segment-hit {
+#editor-canvas.tool-drawing .node,
+#editor-canvas.tool-drawing .control-handle,
+#editor-canvas.tool-drawing .handle-guide,
+#editor-canvas.tool-drawing .segment-hit {
   display: none;
 }
 
-#editor-canvas.tool-rectangle,
-#editor-canvas.tool-rectangle .shape-path {
+#editor-canvas.tool-drawing,
+#editor-canvas.tool-drawing .shape-path {
   cursor: crosshair;
 }
 

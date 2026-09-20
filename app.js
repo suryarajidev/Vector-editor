@@ -393,6 +393,70 @@ function createRectanglePoints(
   ];
 }
 
+function createLinePoints(
+  start,
+  end,
+  bounds = { left: 18, top: 18, right: 622, bottom: 402 },
+) {
+  return [start, end].map((point) => ({
+    x: roundValue(clamp(point.x, bounds.left, bounds.right)),
+    y: roundValue(clamp(point.y, bounds.top, bounds.bottom)),
+    type: "corner",
+    handleIn: null,
+    handleOut: null,
+  }));
+}
+
+function createEllipsePoints(
+  start,
+  end,
+  perfectCircle = false,
+  bounds = { left: 18, top: 18, right: 622, bottom: 402 },
+) {
+  const box = createRectanglePoints(start, end, perfectCircle, bounds);
+  const left = Math.min(box[0].x, box[1].x);
+  const right = Math.max(box[0].x, box[1].x);
+  const top = Math.min(box[0].y, box[2].y);
+  const bottom = Math.max(box[0].y, box[2].y);
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const radiusX = (right - left) / 2;
+  const radiusY = (bottom - top) / 2;
+  const handleX = radiusX * 0.5522847498;
+  const handleY = radiusY * 0.5522847498;
+
+  return [
+    {
+      x: roundValue(centerX),
+      y: roundValue(top),
+      type: "smooth",
+      handleIn: { x: roundValue(-handleX), y: 0 },
+      handleOut: { x: roundValue(handleX), y: 0 },
+    },
+    {
+      x: roundValue(right),
+      y: roundValue(centerY),
+      type: "smooth",
+      handleIn: { x: 0, y: roundValue(-handleY) },
+      handleOut: { x: 0, y: roundValue(handleY) },
+    },
+    {
+      x: roundValue(centerX),
+      y: roundValue(bottom),
+      type: "smooth",
+      handleIn: { x: roundValue(handleX), y: 0 },
+      handleOut: { x: roundValue(-handleX), y: 0 },
+    },
+    {
+      x: roundValue(left),
+      y: roundValue(centerY),
+      type: "smooth",
+      handleIn: { x: 0, y: roundValue(handleY) },
+      handleOut: { x: 0, y: roundValue(-handleY) },
+    },
+  ];
+}
+
 function absoluteHandle(point, handleName) {
   const handle = point[handleName];
   return handle
@@ -404,9 +468,11 @@ function isCurvedSegment(segmentStart, segmentEnd) {
   return Boolean(segmentStart.handleOut || segmentEnd.handleIn);
 }
 
-function segmentGeometry(points, segmentIndex) {
+function segmentGeometry(points, segmentIndex, closed = true) {
   const start = points[segmentIndex];
-  const end = points[(segmentIndex + 1) % points.length];
+  const end = closed
+    ? points[(segmentIndex + 1) % points.length]
+    : points[segmentIndex + 1];
 
   return {
     start,
@@ -435,9 +501,11 @@ function createSegmentCommand(segmentStart, segmentEnd) {
   ].join(" ");
 }
 
-function createSegmentPathData(points, segmentIndex) {
+function createSegmentPathData(points, segmentIndex, closed = true) {
   const start = points[segmentIndex];
-  const end = points[(segmentIndex + 1) % points.length];
+  const end = closed
+    ? points[(segmentIndex + 1) % points.length]
+    : points[segmentIndex + 1];
   return `M ${formatNumber(start.x)} ${formatNumber(start.y)} ${createSegmentCommand(start, end)}`;
 }
 
@@ -484,13 +552,16 @@ function closestPointOnSegment(point, segmentStart, segmentEnd) {
   };
 }
 
-function findClosestSegment(points, point) {
+function findClosestSegment(points, point, closed = true) {
   if (points.length < 2) return null;
 
   let closest = null;
+  const segmentCount = closed ? points.length : points.length - 1;
 
-  points.forEach((segmentStart, segmentIndex) => {
-    const segmentEnd = points[(segmentIndex + 1) % points.length];
+  points.slice(0, segmentCount).forEach((segmentStart, segmentIndex) => {
+    const segmentEnd = closed
+      ? points[(segmentIndex + 1) % points.length]
+      : points[segmentIndex + 1];
     const candidate = closestPointOnSegment(point, segmentStart, segmentEnd);
 
     if (!closest || candidate.distanceSquared < closest.distanceSquared) {
@@ -550,8 +621,8 @@ function closestTOnCubic(point, start, controlStart, controlEnd, end) {
   return (lower + upper) / 2;
 }
 
-function splitSegment(points, segmentIndex, amount) {
-  const geometry = segmentGeometry(points, segmentIndex);
+function splitSegment(points, segmentIndex, amount, closed = true) {
+  const geometry = segmentGeometry(points, segmentIndex, closed);
   const insertAt = segmentIndex + 1;
 
   if (!geometry.curved) {
@@ -690,7 +761,7 @@ function createDocumentSvg(shapes) {
   const paths = normalizedShapes
     .map(
       (shape, index) =>
-        `  <path d="${createPathData(shape.points)}" fill="${fillPaintValue(shape.fill, `shapeFill${index}`)}" stroke="${fillPaintValue(shape.outline, `shapeOutline${index}`)}" stroke-width="${formatNumber(shape.outlineWidth)}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
+        `  <path d="${createPathData(shape.points, shape.closed !== false)}" fill="${shape.fillEnabled === false ? "none" : fillPaintValue(shape.fill, `shapeFill${index}`)}" stroke="${fillPaintValue(shape.outline, `shapeOutline${index}`)}" stroke-width="${formatNumber(shape.outlineWidth)}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
     )
     .join("\n");
   const defs = definitions ? `  <defs>\n${definitions}\n  </defs>\n` : "";
@@ -734,6 +805,8 @@ function initializeEditor() {
   const pointerToolButton = document.querySelector("#tool-pointer");
   const nodeToolButton = document.querySelector("#tool-node");
   const rectangleToolButton = document.querySelector("#tool-rectangle");
+  const circleToolButton = document.querySelector("#tool-circle");
+  const lineToolButton = document.querySelector("#tool-line");
   const addNodeButton = document.querySelector("#tool-add-node");
   const deselectButton = document.querySelector("#deselect-nodes");
   const deleteButton = document.querySelector("#delete-node");
@@ -779,6 +852,7 @@ function initializeEditor() {
       id: 1,
       name: "Shape 1",
       kind: "path",
+      closed: true,
       fill: normalizeFill(),
       outline: normalizeFill(undefined, DEFAULT_OUTLINE_COLOR),
       outlineWidth: DEFAULT_OUTLINE_WIDTH,
@@ -794,7 +868,7 @@ function initializeEditor() {
   let zoom = 1;
   let viewCenter = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
   let dragging = null;
-  let draftRectangle = null;
+  let draftShape = null;
   let currentFill = normalizeFill();
   let currentOutline = normalizeFill(undefined, DEFAULT_OUTLINE_COLOR);
   let currentOutlineWidth = DEFAULT_OUTLINE_WIDTH;
@@ -881,7 +955,7 @@ function initializeEditor() {
       if (fillGradient) shapePaintDefs.append(fillGradient);
       if (outlineGradient) shapePaintDefs.append(outlineGradient);
     });
-    if (draftRectangle) {
+    if (draftShape) {
       const draftFillGradient = createGradientElement(currentFill, "draft-fill");
       const draftOutlineGradient = createGradientElement(currentOutline, "draft-outline");
       if (draftFillGradient) shapePaintDefs.append(draftFillGradient);
@@ -909,8 +983,10 @@ function initializeEditor() {
         index === activeShapeIndex && (activeTool !== "pointer" || objectSelected);
       const path = createSvgElement("path", {
         class: `shape-path${isActive ? " is-active" : ""}`,
-        d: createPathData(shape.points),
-        fill: fillPaintValue(shape.fill, `shape-fill-${index}`),
+        d: createPathData(shape.points, shape.closed !== false),
+        fill: shape.fillEnabled === false
+          ? "none"
+          : fillPaintValue(shape.fill, `shape-fill-${index}`),
         stroke: fillPaintValue(shape.outline, `shape-outline-${index}`),
         "stroke-width": formatNumber(shape.outlineWidth),
         "data-shape-index": String(index),
@@ -924,13 +1000,15 @@ function initializeEditor() {
 
   function renderDraftShape() {
     draftLayer.replaceChildren();
-    if (!draftRectangle) return;
+    if (!draftShape) return;
 
     draftLayer.append(
       createSvgElement("path", {
         class: "draft-shape",
-        d: createPathData(draftRectangle.points),
-        fill: fillPaintValue(currentFill, "draft-fill"),
+        d: createPathData(draftShape.points, draftShape.closed),
+        fill: draftShape.fillEnabled === false
+          ? "none"
+          : fillPaintValue(currentFill, "draft-fill"),
         stroke: fillPaintValue(currentOutline, "draft-outline"),
         "stroke-width": formatNumber(currentOutlineWidth),
       }),
@@ -971,8 +1049,10 @@ function initializeEditor() {
       }
       previewSvg.append(
         createSvgElement("path", {
-          d: createPathData(shape.points),
-          fill: fillPaintValue(shape.fill, previewGradientId),
+          d: createPathData(shape.points, shape.closed !== false),
+          fill: shape.fillEnabled === false
+            ? "none"
+            : fillPaintValue(shape.fill, previewGradientId),
           stroke: fillPaintValue(shape.outline, previewOutlineGradientId),
           "stroke-width": formatNumber(shape.outlineWidth),
           "stroke-linecap": "round",
@@ -987,7 +1067,12 @@ function initializeEditor() {
       name.textContent = shape.name;
       const meta = document.createElement("span");
       meta.className = "object-meta";
-      meta.textContent = shape.kind === "rectangle" ? "Rectangle" : "Vector path";
+      const kindLabels = {
+        rectangle: "Rectangle",
+        ellipse: "Ellipse",
+        line: "Line",
+      };
+      meta.textContent = kindLabels[shape.kind] ?? "Vector path";
       button.append(preview, name, meta);
       button.addEventListener("click", () => selectShape(index));
       objectList.append(button);
@@ -1174,11 +1259,13 @@ function initializeEditor() {
 
   function renderSegmentHitTargets() {
     segmentHitLayer.replaceChildren();
+    const isClosed = shapes[activeShapeIndex]?.closed !== false;
+    const segmentCount = isClosed ? points.length : Math.max(0, points.length - 1);
 
-    points.forEach((_, segmentIndex) => {
+    points.slice(0, segmentCount).forEach((_, segmentIndex) => {
       const hitPath = createSvgElement("path", {
         class: "segment-hit",
-        d: createSegmentPathData(points, segmentIndex),
+        d: createSegmentPathData(points, segmentIndex, isClosed),
         "data-segment-index": String(segmentIndex),
         "aria-label": `Add node on segment ${segmentIndex + 1}`,
       });
@@ -1343,8 +1430,11 @@ function initializeEditor() {
         : `${selectedIndices.size} nodes`;
     nodeCount.textContent = String(points.length);
     const curvedCount = points.filter((point) => point.type !== "corner").length;
+    const pathDescription = shapes[activeShapeIndex]?.closed === false
+      ? "Open path"
+      : "Closed path";
     nodeSummary.textContent = shapes.length
-      ? `${points.length} nodes · ${curvedCount} curved · Closed path`
+      ? `${points.length} nodes · ${curvedCount} curved · ${pathDescription}`
       : "No objects";
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
@@ -1369,9 +1459,12 @@ function initializeEditor() {
     const isNodeTool = activeTool === "node";
     const isPointerTool = activeTool === "pointer";
     const isRectangleTool = activeTool === "rectangle";
+    const isCircleTool = activeTool === "circle";
+    const isLineTool = activeTool === "line";
+    const isDrawingTool = isRectangleTool || isCircleTool || isLineTool;
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
-    nodeActions.hidden = isRectangleTool;
+    nodeActions.hidden = isDrawingTool;
     nodeActions.setAttribute("aria-label", isPointerTool ? "Object actions" : "Node actions");
     deselectButton.hidden = !isNodeTool;
     deleteButton.disabled = isNodeTool
@@ -1385,13 +1478,20 @@ function initializeEditor() {
     svg.classList.toggle("tool-node", isNodeTool);
     svg.classList.toggle("tool-pointer", isPointerTool);
     svg.classList.toggle("tool-rectangle", isRectangleTool);
+    svg.classList.toggle("tool-circle", isCircleTool);
+    svg.classList.toggle("tool-line", isLineTool);
+    svg.classList.toggle("tool-drawing", isDrawingTool);
     svg.classList.toggle("is-dragging-canvas", dragging?.kind === "pan");
     pointerToolButton.classList.toggle("is-active", isPointerTool);
     nodeToolButton.classList.toggle("is-active", isNodeTool);
     rectangleToolButton.classList.toggle("is-active", isRectangleTool);
+    circleToolButton.classList.toggle("is-active", isCircleTool);
+    lineToolButton.classList.toggle("is-active", isLineTool);
     pointerToolButton.setAttribute("aria-pressed", String(isPointerTool));
     nodeToolButton.setAttribute("aria-pressed", String(isNodeTool));
     rectangleToolButton.setAttribute("aria-pressed", String(isRectangleTool));
+    circleToolButton.setAttribute("aria-pressed", String(isCircleTool));
+    lineToolButton.setAttribute("aria-pressed", String(isLineTool));
     pointerToolButton.setAttribute(
       "aria-label",
       isPointerTool ? "Pointer tool selected" : "Pointer tool",
@@ -1400,6 +1500,14 @@ function initializeEditor() {
     rectangleToolButton.setAttribute(
       "aria-label",
       isRectangleTool ? "Rectangle tool selected" : "Rectangle tool",
+    );
+    circleToolButton.setAttribute(
+      "aria-label",
+      isCircleTool ? "Circle tool selected" : "Circle tool",
+    );
+    lineToolButton.setAttribute(
+      "aria-label",
+      isLineTool ? "Line tool selected" : "Line tool",
     );
 
     if (isNodeTool) {
@@ -1412,6 +1520,16 @@ function initializeEditor() {
       toolDescription.textContent = "Drag to create a rectangle";
       toolStatus.textContent = "Shape drawing";
       canvasHintText.textContent = "Drag to draw · hold Shift for a square · scroll to pan";
+    } else if (isCircleTool) {
+      toolName.textContent = "Circle tool";
+      toolDescription.textContent = "Drag to create an ellipse";
+      toolStatus.textContent = "Shape drawing";
+      canvasHintText.textContent = "Drag to draw · hold Shift for a circle · scroll to pan";
+    } else if (isLineTool) {
+      toolName.textContent = "Line tool";
+      toolDescription.textContent = "Drag to connect two nodes";
+      toolStatus.textContent = "Line drawing";
+      canvasHintText.textContent = "Drag from the first node to the second · scroll to pan";
     } else {
       toolName.textContent = "Pointer tool";
       toolDescription.textContent = "Move, stretch, or resize the selected object";
@@ -1438,7 +1556,7 @@ function initializeEditor() {
   function setActiveTool(tool) {
     activeTool = tool;
     dragging = null;
-    draftRectangle = null;
+    draftShape = null;
     if (tool === "pointer") {
       objectSelected = shapes.length > 0;
       if (objectSelected) {
@@ -1452,6 +1570,8 @@ function initializeEditor() {
       node: "Node tool selected",
       pointer: "Pointer tool selected",
       rectangle: "Rectangle tool selected — hold Shift for a square",
+      circle: "Circle tool selected — hold Shift for a perfect circle",
+      line: "Line tool selected",
     };
     announce(messages[tool]);
   }
@@ -1493,17 +1613,38 @@ function initializeEditor() {
     const pointer = pointFromPointer(event);
     if (!pointer) return;
 
-    if (dragging.kind === "rectangle") {
+    if (["rectangle", "ellipse", "line"].includes(dragging.kind)) {
       dragging.moved =
         dragging.moved ||
         Math.hypot(
           event.clientX - dragging.startClient.x,
           event.clientY - dragging.startClient.y,
         ) >= 3;
-      draftRectangle = {
-        points: createRectanglePoints(dragging.startPointer, pointer, event.shiftKey),
-        perfectSquare: event.shiftKey,
-      };
+      if (dragging.kind === "rectangle") {
+        draftShape = {
+          kind: "rectangle",
+          closed: true,
+          fillEnabled: true,
+          points: createRectanglePoints(dragging.startPointer, pointer, event.shiftKey),
+          constrained: event.shiftKey,
+        };
+      } else if (dragging.kind === "ellipse") {
+        draftShape = {
+          kind: "ellipse",
+          closed: true,
+          fillEnabled: true,
+          points: createEllipsePoints(dragging.startPointer, pointer, event.shiftKey),
+          constrained: event.shiftKey,
+        };
+      } else {
+        draftShape = {
+          kind: "line",
+          closed: false,
+          fillEnabled: false,
+          points: createLinePoints(dragging.startPointer, pointer),
+          constrained: false,
+        };
+      }
       canvasHint.hidden = true;
       render();
       return;
@@ -1558,10 +1699,36 @@ function initializeEditor() {
   }
 
   function addNodeAt(segmentIndex, amount, message) {
-    const insertedIndex = splitSegment(points, segmentIndex, clamp(amount, 0.02, 0.98));
+    const isClosed = shapes[activeShapeIndex]?.closed !== false;
+    const insertedIndex = splitSegment(
+      points,
+      segmentIndex,
+      clamp(amount, 0.02, 0.98),
+      isClosed,
+    );
     canvasHint.hidden = true;
     selectNode(insertedIndex, { focus: true });
     announce(message.replace("{node}", String(insertedIndex + 1)));
+  }
+
+  function commitDrawnShape({ name, kind, points: shapePoints, closed, fillEnabled }) {
+    shapes.push({
+      id: nextShapeId,
+      name,
+      kind,
+      closed,
+      fillEnabled,
+      fill: cloneFill(currentFill),
+      outline: cloneFill(currentOutline),
+      outlineWidth: currentOutlineWidth,
+      points: shapePoints,
+    });
+    nextShapeId += 1;
+    activeShapeIndex = shapes.length - 1;
+    points = shapes[activeShapeIndex].points;
+    selectedIndex = 0;
+    selectedIndices = new Set(points.map((_, index) => index));
+    render();
   }
 
   function finishRectangle(dragState, pointer, perfectSquare) {
@@ -1572,7 +1739,7 @@ function initializeEditor() {
     );
     const width = Math.abs(rectanglePoints[1].x - rectanglePoints[0].x);
     const height = Math.abs(rectanglePoints[3].y - rectanglePoints[0].y);
-    draftRectangle = null;
+    draftShape = null;
 
     if (!dragState.moved || width < 3 || height < 3) {
       render();
@@ -1580,23 +1747,59 @@ function initializeEditor() {
       return;
     }
 
-    const shapeName = perfectSquare ? `Square ${nextShapeId}` : `Rectangle ${nextShapeId}`;
-    shapes.push({
-      id: nextShapeId,
-      name: shapeName,
+    commitDrawnShape({
+      name: perfectSquare ? `Square ${nextShapeId}` : `Rectangle ${nextShapeId}`,
       kind: "rectangle",
-      fill: cloneFill(currentFill),
-      outline: cloneFill(currentOutline),
-      outlineWidth: currentOutlineWidth,
       points: rectanglePoints,
+      closed: true,
+      fillEnabled: true,
     });
-    nextShapeId += 1;
-    activeShapeIndex = shapes.length - 1;
-    points = shapes[activeShapeIndex].points;
-    selectedIndex = 0;
-    selectedIndices = new Set(points.map((_, index) => index));
-    render();
     announce(`Added ${perfectSquare ? "a square" : "a rectangle"}`);
+  }
+
+  function finishEllipse(dragState, pointer, perfectCircle) {
+    const ellipsePoints = createEllipsePoints(
+      dragState.startPointer,
+      pointer,
+      perfectCircle,
+    );
+    const bounds = calculateShapeBounds(ellipsePoints);
+    draftShape = null;
+
+    if (!dragState.moved || bounds.width < 3 || bounds.height < 3) {
+      render();
+      announce("Drag to create an ellipse");
+      return;
+    }
+
+    commitDrawnShape({
+      name: perfectCircle ? `Circle ${nextShapeId}` : `Ellipse ${nextShapeId}`,
+      kind: "ellipse",
+      points: ellipsePoints,
+      closed: true,
+      fillEnabled: true,
+    });
+    announce(`Added ${perfectCircle ? "a circle" : "an ellipse"}`);
+  }
+
+  function finishLine(dragState, pointer) {
+    const linePoints = createLinePoints(dragState.startPointer, pointer);
+    draftShape = null;
+
+    if (!dragState.moved || distance(linePoints[0], linePoints[1]) < 3) {
+      render();
+      announce("Drag to create a line");
+      return;
+    }
+
+    commitDrawnShape({
+      name: `Line ${nextShapeId}`,
+      kind: "line",
+      points: linePoints,
+      closed: false,
+      fillEnabled: false,
+    });
+    announce("Added a line");
   }
 
   function addMidpointNode() {
@@ -1604,7 +1807,11 @@ function initializeEditor() {
       announce("Select a node before adding a midpoint");
       return;
     }
-    addNodeAt(selectedIndex, 0.5, "Added midpoint node {node}");
+    const isClosed = shapes[activeShapeIndex]?.closed !== false;
+    const segmentIndex = isClosed
+      ? selectedIndex
+      : Math.min(selectedIndex, points.length - 2);
+    addNodeAt(segmentIndex, 0.5, "Added midpoint node {node}");
   }
 
   function deleteSelectedNode() {
@@ -1613,8 +1820,10 @@ function initializeEditor() {
       announce("Select one or more nodes to delete");
       return;
     }
-    if (points.length - indices.length < 3) {
-      announce("A closed shape needs at least 3 nodes");
+    const isClosed = shapes[activeShapeIndex]?.closed !== false;
+    const minimumNodes = isClosed ? 3 : 2;
+    if (points.length - indices.length < minimumNodes) {
+      announce(`${isClosed ? "A closed shape" : "An open path"} needs at least ${minimumNodes} nodes`);
       return;
     }
 
@@ -1751,16 +1960,24 @@ function initializeEditor() {
     const shapeElement = event.target.closest?.("[data-shape-index]");
     event.preventDefault();
 
-    if (activeTool === "rectangle") {
+    if (["rectangle", "circle", "line"].includes(activeTool)) {
+      const drawingKind = activeTool === "circle" ? "ellipse" : activeTool;
       dragging = {
-        kind: "rectangle",
+        kind: drawingKind,
         moved: false,
         startPointer: pointer,
         startClient: { x: event.clientX, y: event.clientY },
       };
-      draftRectangle = {
-        points: createRectanglePoints(pointer, pointer, event.shiftKey),
-        perfectSquare: event.shiftKey,
+      draftShape = {
+        kind: drawingKind,
+        closed: drawingKind !== "line",
+        fillEnabled: drawingKind !== "line",
+        points: drawingKind === "rectangle"
+          ? createRectanglePoints(pointer, pointer, event.shiftKey)
+          : drawingKind === "ellipse"
+            ? createEllipsePoints(pointer, pointer, event.shiftKey)
+            : createLinePoints(pointer, pointer),
+        constrained: drawingKind !== "line" && event.shiftKey,
       };
       render();
     } else if (resizeControl && objectSelected) {
@@ -1861,6 +2078,18 @@ function initializeEditor() {
       );
       return;
     }
+    if (completedDrag.kind === "ellipse") {
+      finishEllipse(
+        completedDrag,
+        endPointer ?? completedDrag.startPointer,
+        event.shiftKey,
+      );
+      return;
+    }
+    if (completedDrag.kind === "line") {
+      finishLine(completedDrag, endPointer ?? completedDrag.startPointer);
+      return;
+    }
 
     if (completedDrag.kind === "pan" && !completedDrag.moved) {
       if (activeTool === "pointer") {
@@ -1880,7 +2109,11 @@ function initializeEditor() {
       !completedDrag.moved &&
       completedDrag.segmentIndex !== null
     ) {
-      const geometry = segmentGeometry(points, completedDrag.segmentIndex);
+      const geometry = segmentGeometry(
+        points,
+        completedDrag.segmentIndex,
+        shapes[activeShapeIndex]?.closed !== false,
+      );
       const amount = geometry.curved
         ? closestTOnCubic(
             completedDrag.startPointer,
@@ -1903,7 +2136,7 @@ function initializeEditor() {
 
   svg.addEventListener("pointercancel", () => {
     dragging = null;
-    draftRectangle = null;
+    draftShape = null;
     render();
   });
 
@@ -1957,6 +2190,8 @@ function initializeEditor() {
   pointerToolButton.addEventListener("click", () => setActiveTool("pointer"));
   nodeToolButton.addEventListener("click", () => setActiveTool("node"));
   rectangleToolButton.addEventListener("click", () => setActiveTool("rectangle"));
+  circleToolButton.addEventListener("click", () => setActiveTool("circle"));
+  lineToolButton.addEventListener("click", () => setActiveTool("line"));
   addNodeButton.addEventListener("click", addMidpointNode);
   deselectButton.addEventListener("click", () =>
     deselectAllNodes({ announceChange: true }),
@@ -2001,6 +2236,7 @@ function initializeEditor() {
         id: 1,
         name: "Shape 1",
         kind: "path",
+        closed: true,
         fill: normalizeFill(),
         outline: normalizeFill(undefined, DEFAULT_OUTLINE_COLOR),
         outlineWidth: DEFAULT_OUTLINE_WIDTH,
@@ -2018,7 +2254,7 @@ function initializeEditor() {
     currentOutlineWidth = DEFAULT_OUTLINE_WIDTH;
     activePaintTarget = "fill";
     activeColorStop = 0;
-    draftRectangle = null;
+    draftShape = null;
     canvasHint.hidden = false;
     render();
     announce("Shape reset");
@@ -2075,8 +2311,10 @@ const VectorEditorCore = {
   constrainTranslation,
   createGradientEndColor,
   createGradientMarkup,
+  createEllipsePoints,
   createArtworkSvg,
   createDocumentSvg,
+  createLinePoints,
   createPathData,
   createRectanglePoints,
   createSegmentPathData,
