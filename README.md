@@ -13,7 +13,7 @@ The prototype currently supports:
 - Dragging empty canvas space to pan with either tool
 - Panning the checkerboard background together with the artwork
 - Dragging the filled shape to move the whole object
-- Stretching selected objects with side handles or resizing them in two directions from a corner
+- Stretching selected objects with side handles or proportionally resizing them from a corner
 - Deleting an entire selected object from Pointer mode with the Delete button or keyboard key
 - Nudging a selected object with the arrow keys (`Shift` moves 10 pixels)
 - Hiding the node inspector while the Pointer tool is active

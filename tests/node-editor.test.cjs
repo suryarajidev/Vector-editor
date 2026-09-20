@@ -192,14 +192,26 @@ assert.deepEqual(calculateShapeBounds(stretchedRectangle), {
   width: 160,
   height: 40,
 });
-const cornerResizedRectangle = resizeShapePoints(rectangle, "nw", { x: 60, y: 50 });
+const cornerResizedRectangle = resizeShapePoints(rectangle, "nw", { x: 60, y: 80 });
 assert.deepEqual(calculateShapeBounds(cornerResizedRectangle), {
   left: 60,
-  top: 50,
+  top: 80,
   right: 180,
   bottom: 140,
   width: 120,
-  height: 90,
+  height: 60,
+});
+const offAxisCornerResize = calculateShapeBounds(
+  resizeShapePoints(rectangle, "se", { x: 300, y: 150 }),
+);
+assert.equal(offAxisCornerResize.width / offAxisCornerResize.height, 2);
+assert.deepEqual(offAxisCornerResize, {
+  left: 100,
+  top: 100,
+  right: 300,
+  bottom: 200,
+  width: 200,
+  height: 100,
 });
 assert.equal(
   calculateShapeBounds(resizeShapePoints(rectangle, "e", { x: 900, y: 120 })).right,

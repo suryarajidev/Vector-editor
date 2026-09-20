@@ -270,6 +270,47 @@ function resizeShapePoints(
   const source = calculateShapeBounds(points);
   if (!source) return [];
   const target = { ...source };
+  const isCorner = ["nw", "ne", "se", "sw"].includes(handle);
+
+  if (isCorner && source.width > 0 && source.height > 0) {
+    const movesWest = handle.includes("w");
+    const movesNorth = handle.includes("n");
+    const anchorX = movesWest ? source.right : source.left;
+    const anchorY = movesNorth ? source.bottom : source.top;
+    const directionX = movesWest ? -1 : 1;
+    const directionY = movesNorth ? -1 : 1;
+    const requestedWidth = Math.max(0, (pointer.x - anchorX) * directionX);
+    const requestedHeight = Math.max(0, (pointer.y - anchorY) * directionY);
+    const requestedScale = Math.max(
+      requestedWidth / source.width,
+      requestedHeight / source.height,
+    );
+    const availableWidth = directionX > 0
+      ? bounds.right - anchorX
+      : anchorX - bounds.left;
+    const availableHeight = directionY > 0
+      ? bounds.bottom - anchorY
+      : anchorY - bounds.top;
+    const maximumScale = Math.min(
+      availableWidth / source.width,
+      availableHeight / source.height,
+    );
+    const minimumScale = Math.min(
+      maximumScale,
+      Math.max(minimumSize / source.width, minimumSize / source.height),
+    );
+    const scale = clamp(requestedScale, minimumScale, maximumScale);
+    const scaledWidth = source.width * scale;
+    const scaledHeight = source.height * scale;
+
+    target.left = directionX > 0 ? anchorX : anchorX - scaledWidth;
+    target.right = directionX > 0 ? anchorX + scaledWidth : anchorX;
+    target.top = directionY > 0 ? anchorY : anchorY - scaledHeight;
+    target.bottom = directionY > 0 ? anchorY + scaledHeight : anchorY;
+    target.width = scaledWidth;
+    target.height = scaledHeight;
+    return scalePointsToBounds(points, source, target);
+  }
 
   if (handle.includes("w")) {
     target.left = clamp(pointer.x, bounds.left, source.right - minimumSize);
@@ -1059,14 +1100,14 @@ function initializeEditor() {
     const centerX = (bounds.left + bounds.right) / 2;
     const centerY = (bounds.top + bounds.bottom) / 2;
     const handles = [
-      ["nw", bounds.left, bounds.top, "top-left corner"],
-      ["n", centerX, bounds.top, "top edge"],
-      ["ne", bounds.right, bounds.top, "top-right corner"],
-      ["e", bounds.right, centerY, "right edge"],
-      ["se", bounds.right, bounds.bottom, "bottom-right corner"],
-      ["s", centerX, bounds.bottom, "bottom edge"],
-      ["sw", bounds.left, bounds.bottom, "bottom-left corner"],
-      ["w", bounds.left, centerY, "left edge"],
+      ["nw", bounds.left, bounds.top, "Proportionally resize from top-left corner"],
+      ["n", centerX, bounds.top, "Stretch from top edge"],
+      ["ne", bounds.right, bounds.top, "Proportionally resize from top-right corner"],
+      ["e", bounds.right, centerY, "Stretch from right edge"],
+      ["se", bounds.right, bounds.bottom, "Proportionally resize from bottom-right corner"],
+      ["s", centerX, bounds.bottom, "Stretch from bottom edge"],
+      ["sw", bounds.left, bounds.bottom, "Proportionally resize from bottom-left corner"],
+      ["w", bounds.left, centerY, "Stretch from left edge"],
     ];
 
     handles.forEach(([handle, x, y, label]) => {
@@ -1074,7 +1115,7 @@ function initializeEditor() {
         class: `transform-handle transform-handle-${handle}`,
         transform: `translate(${formatNumber(x)} ${formatNumber(y)}) scale(${formatNumber(1 / zoom)})`,
         "data-resize-handle": handle,
-        "aria-label": `Resize from ${label}`,
+        "aria-label": label,
       });
       group.append(
         createSvgElement("rect", {
@@ -1220,7 +1261,7 @@ function initializeEditor() {
       toolDescription.textContent = "Move, stretch, or resize the selected object";
       toolStatus.textContent = "Pointer editing";
       canvasHintText.textContent = objectSelected
-        ? "Drag handles to resize · drag the shape to move it · Delete removes it"
+        ? "Corners keep proportions · sides stretch · drag the shape to move it"
         : "Click an object to select it · drag empty canvas to pan";
     }
   }
