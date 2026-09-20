@@ -342,6 +342,44 @@ function calculateShapeBounds(points) {
   };
 }
 
+function createSelectionBounds(start, end) {
+  const left = Math.min(start.x, end.x);
+  const right = Math.max(start.x, end.x);
+  const top = Math.min(start.y, end.y);
+  const bottom = Math.max(start.y, end.y);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function boundsIntersect(first, second) {
+  return Boolean(
+    first &&
+      second &&
+      first.left <= second.right &&
+      first.right >= second.left &&
+      first.top <= second.bottom &&
+      first.bottom >= second.top
+  );
+}
+
+function shapeIndicesInSelection(shapes, selectionBounds, layer = DEFAULT_LAYER) {
+  const editableLayer = normalizeLayer(layer);
+  return shapes
+    .map((shape, index) => ({ shape, index }))
+    .filter(
+      ({ shape }) =>
+        normalizeLayer(shape.layer) === editableLayer &&
+        boundsIntersect(calculateShapeBounds(shape.points ?? []), selectionBounds),
+    )
+    .map(({ index }) => index);
+}
+
 function scalePointsToBounds(points, sourceBounds, targetBounds) {
   const scaleX = sourceBounds.width > 0 ? targetBounds.width / sourceBounds.width : 1;
   const scaleY = sourceBounds.height > 0 ? targetBounds.height / sourceBounds.height : 1;
@@ -1012,6 +1050,7 @@ function initializeEditor() {
   const shapePaintDefs = document.querySelector("#shape-paint-defs");
   const shapeLayer = document.querySelector("#shape-layer");
   const draftLayer = document.querySelector("#draft-layer");
+  const selectionLayer = document.querySelector("#selection-layer");
   const segmentHitLayer = document.querySelector("#segment-hit-layer");
   const handleLayer = document.querySelector("#handle-layer");
   const nodeLayer = document.querySelector("#node-layer");
@@ -1102,6 +1141,7 @@ function initializeEditor() {
   let activeShapeIndex = 0;
   let activeLayer = DEFAULT_LAYER;
   let points = shapes[activeShapeIndex].points;
+  let selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
   let nextShapeId = 2;
   let selectedIndex = 0;
   let selectedIndices = new Set([0]);
@@ -1139,6 +1179,7 @@ function initializeEditor() {
       nextShapeId,
       selectedIndex,
       selectedIndices: [...selectedIndices],
+      selectedShapeIds: [...selectedShapeIds],
       currentFill: cloneFill(currentFill),
       currentOutline: cloneFill(currentOutline),
       currentOutlineWidth,
@@ -1179,6 +1220,28 @@ function initializeEditor() {
       normalizeLayer(shapes[requestedShapeIndex].layer) === activeLayer
       ? requestedShapeIndex
       : frontmostShapeIndexInLayer(activeLayer);
+    const restorableShapeIds = new Set(state.selectedShapeIds ?? []);
+    selectedShapeIds = new Set(
+      shapes
+        .filter(
+          (shape) =>
+            normalizeLayer(shape.layer) === activeLayer && restorableShapeIds.has(shape.id),
+        )
+        .map((shape) => shape.id),
+    );
+    if (state.objectSelected && !selectedShapeIds.size && activeShapeIndex >= 0) {
+      selectedShapeIds.add(shapes[activeShapeIndex].id);
+    }
+    if (
+      selectedShapeIds.size &&
+      !selectedShapeIds.has(shapes[activeShapeIndex]?.id)
+    ) {
+      activeShapeIndex = shapes.reduce(
+        (selectedIndex, shape, index) =>
+          selectedShapeIds.has(shape.id) ? index : selectedIndex,
+        -1,
+      );
+    }
     points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
     nextShapeId = state.nextShapeId;
     selectedIndex = points.length
@@ -1190,7 +1253,9 @@ function initializeEditor() {
     currentFill = cloneFill(state.currentFill);
     currentOutline = cloneFill(state.currentOutline);
     currentOutlineWidth = state.currentOutlineWidth;
-    objectSelected = Boolean(state.objectSelected && activeShapeIndex >= 0);
+    objectSelected = Boolean(
+      state.objectSelected && activeShapeIndex >= 0 && selectedShapeIds.size,
+    );
     dragging = null;
     draftShape = null;
     closeObjectContextMenu();
@@ -1308,6 +1373,44 @@ function initializeEditor() {
     );
   }
 
+  function selectedShapeIndexes() {
+    return shapes
+      .map((shape, index) => ({ shape, index }))
+      .filter(
+        ({ shape }) =>
+          normalizeLayer(shape.layer) === activeLayer && selectedShapeIds.has(shape.id),
+      )
+      .map(({ index }) => index);
+  }
+
+  function applyShapeSelection(indices, { additive = false, announceChange = false } = {}) {
+    const nextIds = additive ? new Set(selectedShapeIds) : new Set();
+    indices.forEach((index) => {
+      if (shapeIsEditable(index)) nextIds.add(shapes[index].id);
+    });
+    selectedShapeIds = nextIds;
+    const indexes = selectedShapeIndexes();
+    objectSelected = indexes.length > 0;
+
+    if (objectSelected) {
+      activeShapeIndex = indexes.at(-1);
+      points = shapes[activeShapeIndex].points;
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+    } else {
+      selectedIndices.clear();
+    }
+
+    render();
+    if (announceChange) {
+      announce(
+        indexes.length
+          ? `${indexes.length} object${indexes.length === 1 ? "" : "s"} selected`
+          : "Object selection cleared",
+      );
+    }
+  }
+
   function selectShape(index, { selectAll = true } = {}) {
     if (!shapes.length) return;
     const nextIndex = clamp(index, 0, shapes.length - 1);
@@ -1317,6 +1420,7 @@ function initializeEditor() {
     }
     activeShapeIndex = nextIndex;
     points = shapes[activeShapeIndex].points;
+    selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
     objectSelected = true;
     selectedIndex = 0;
     selectedIndices = selectAll
@@ -1330,10 +1434,9 @@ function initializeEditor() {
 
     shapeRenderOrder(shapes).forEach(({ shape, index }) => {
       const isEditable = normalizeLayer(shape.layer) === activeLayer;
-      const isActive =
-        isEditable &&
-        index === activeShapeIndex &&
-        (activeTool !== "pointer" || objectSelected);
+      const isActive = isEditable && (activeTool === "pointer"
+        ? objectSelected && selectedShapeIds.has(shape.id)
+        : index === activeShapeIndex);
       const path = createSvgElement("path", {
         class: `shape-path${isActive ? " is-active" : ""}${isEditable ? "" : " is-layer-locked"}`,
         d: createPathData(shape.points, shape.closed !== false),
@@ -1343,7 +1446,7 @@ function initializeEditor() {
         stroke: fillPaintValue(shape.outline, `shape-outline-${index}`),
         "stroke-width": formatNumber(shape.outlineWidth),
         filter: isActive ? "url(#shape-shadow)" : "none",
-        "aria-label": `${shape.name}, Layer ${normalizeLayer(shape.layer)}${isEditable ? "" : ", locked"}`,
+        "aria-label": `${shape.name}, Layer ${normalizeLayer(shape.layer)}${isActive ? ", selected" : ""}${isEditable ? "" : ", locked"}`,
       });
       if (isEditable) path.setAttribute("data-shape-index", String(index));
       if (index === activeShapeIndex) path.id = "shape-path";
@@ -1364,6 +1467,24 @@ function initializeEditor() {
           : fillPaintValue(currentFill, "draft-fill"),
         stroke: fillPaintValue(currentOutline, "draft-outline"),
         "stroke-width": formatNumber(currentOutlineWidth),
+      }),
+    );
+  }
+
+  function renderSelectionMarquee() {
+    selectionLayer.replaceChildren();
+    if (dragging?.kind !== "marquee") return;
+    const bounds = createSelectionBounds(
+      dragging.startPointer,
+      dragging.currentPointer ?? dragging.startPointer,
+    );
+    selectionLayer.append(
+      createSvgElement("rect", {
+        class: "selection-marquee",
+        x: formatNumber(bounds.left),
+        y: formatNumber(bounds.top),
+        width: formatNumber(bounds.width),
+        height: formatNumber(bounds.height),
       }),
     );
   }
@@ -1389,10 +1510,9 @@ function initializeEditor() {
 
       layerEntries.forEach(({ shape, index }) => {
         const isEditable = layer === activeLayer;
-        const isActive =
-          isEditable &&
-          index === activeShapeIndex &&
-          (activeTool !== "pointer" || objectSelected);
+        const isActive = isEditable && (activeTool === "pointer"
+          ? objectSelected && selectedShapeIds.has(shape.id)
+          : index === activeShapeIndex);
         const button = document.createElement("button");
         button.type = "button";
         button.dataset.draggable = String(isEditable);
@@ -1865,7 +1985,11 @@ function initializeEditor() {
     if (!["pointer", "rotate"].includes(activeTool) || !objectSelected || !points.length) {
       return;
     }
-    const bounds = calculateShapeBounds(points);
+    const selectionIndexes = activeTool === "pointer"
+      ? selectedShapeIndexes()
+      : [activeShapeIndex];
+    const transformPoints = selectionIndexes.flatMap((index) => shapes[index]?.points ?? []);
+    const bounds = calculateShapeBounds(transformPoints);
     if (!bounds) return;
 
     transformLayer.append(
@@ -1880,6 +2004,8 @@ function initializeEditor() {
 
     const centerX = (bounds.left + bounds.right) / 2;
     const centerY = (bounds.top + bounds.bottom) / 2;
+
+    if (activeTool === "pointer" && selectionIndexes.length > 1) return;
 
     if (activeTool === "rotate") {
       const handleY = bounds.top - 32 / zoom;
@@ -1964,6 +2090,7 @@ function initializeEditor() {
     const selectedPoints = selectedIndexList().map((index) => points[index]);
     const hasSelection = selectedIndices.size > 0;
     const hasSingleSelection = selectedIndices.size === 1;
+    const selectedObjectCount = selectedShapeIndexes().length;
     const viewBox = createZoomViewBox(
       zoom,
       CANVAS_WIDTH,
@@ -1978,6 +2105,7 @@ function initializeEditor() {
     renderPaintDefinitions();
     renderShapes();
     renderDraftShape();
+    renderSelectionMarquee();
     renderSegmentHitTargets();
     renderHandles();
     renderCanvasNodes();
@@ -2003,9 +2131,11 @@ function initializeEditor() {
     const pathDescription = activeShape?.closed === false
       ? "Open path"
       : "Closed path";
-    nodeSummary.textContent = activeShape
-      ? `${points.length} nodes · ${curvedCount} curved · ${pathDescription} · Layer ${activeLayer}`
-      : `Layer ${activeLayer} is empty`;
+    nodeSummary.textContent = activeTool === "pointer" && selectedObjectCount > 1
+      ? `${selectedObjectCount} objects selected · Layer ${activeLayer}`
+      : activeShape
+        ? `${points.length} nodes · ${curvedCount} curved · ${pathDescription} · Layer ${activeLayer}`
+        : `Layer ${activeLayer} is empty`;
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     zoomOutButton.disabled = zoom === ZOOM_LEVELS[0];
     zoomInButton.disabled = zoom === ZOOM_LEVELS.at(-1);
@@ -2035,7 +2165,11 @@ function initializeEditor() {
     const isDrawingTool = isRectangleTool || isCircleTool || isLineTool;
     const isObjectTool = isPointerTool || isRotateTool;
     const hasObjectSelection =
-      objectSelected && activeShapeIndex >= 0 && shapeIsEditable(activeShapeIndex);
+      objectSelected &&
+      selectedShapeIds.size > 0 &&
+      activeShapeIndex >= 0 &&
+      shapeIsEditable(activeShapeIndex);
+    const hasSingleObjectSelection = hasObjectSelection && selectedObjectCount === 1;
     addNodeButton.hidden = !isNodeTool;
     colorControl.hidden = isRotateTool;
     transformControls.hidden = !isObjectTool;
@@ -2052,7 +2186,7 @@ function initializeEditor() {
       flipHorizontalButton,
       flipVerticalButton,
     ].forEach((control) => {
-      control.disabled = !hasObjectSelection;
+      control.disabled = !hasSingleObjectSelection;
     });
     editorLayout.classList.toggle("node-mode", isNodeTool);
     editorLayout.classList.toggle("pointer-mode", isPointerTool);
@@ -2067,9 +2201,13 @@ function initializeEditor() {
       : !isPointerTool || !hasObjectSelection;
     deleteButton.setAttribute(
       "aria-label",
-      isPointerTool ? "Delete selected object" : "Delete selected nodes",
+      isPointerTool
+        ? `Delete selected object${selectedObjectCount === 1 ? "" : "s"}`
+        : "Delete selected nodes",
     );
-    deleteButton.title = isPointerTool ? "Delete selected object" : "Delete selected nodes";
+    deleteButton.title = isPointerTool
+      ? `Delete selected object${selectedObjectCount === 1 ? "" : "s"}`
+      : "Delete selected nodes";
     svg.classList.toggle("tool-node", isNodeTool);
     svg.classList.toggle("tool-pointer", isPointerTool);
     svg.classList.toggle("tool-rotate", isRotateTool);
@@ -2078,6 +2216,7 @@ function initializeEditor() {
     svg.classList.toggle("tool-line", isLineTool);
     svg.classList.toggle("tool-drawing", isDrawingTool);
     svg.classList.toggle("is-dragging-canvas", dragging?.kind === "pan");
+    svg.classList.toggle("is-selecting", dragging?.kind === "marquee");
     svg.classList.toggle("is-rotating", dragging?.kind === "rotate");
     pointerToolButton.classList.toggle("is-active", isPointerTool);
     nodeToolButton.classList.toggle("is-active", isNodeTool);
@@ -2144,9 +2283,11 @@ function initializeEditor() {
       toolName.textContent = "Pointer tool";
       toolDescription.textContent = `Move, transform, or reorder objects in Layer ${activeLayer}`;
       toolStatus.textContent = "Pointer editing";
-      canvasHintText.textContent = objectSelected
-        ? `Layer ${activeLayer} editable · Alt-drag duplicates · Alt centers · Ctrl skews`
-        : `Layer ${activeLayer} editable · click its objects to select · drag or scroll to pan`;
+      canvasHintText.textContent = selectedObjectCount > 1
+        ? `${selectedObjectCount} objects selected · drag one to move all · right-drag or scroll to pan`
+        : objectSelected
+          ? `Layer ${activeLayer} editable · Alt-drag duplicates · right-drag or scroll to pan`
+          : `Drag empty canvas to select objects · right-drag or scroll to pan`;
     }
   }
 
@@ -2170,11 +2311,13 @@ function initializeEditor() {
     activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
     if (activeShapeIndex >= 0) {
       points = shapes[activeShapeIndex].points;
+      selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
       selectedIndex = 0;
       selectedIndices = new Set(points.map((_, index) => index));
       objectSelected = activeTool === "pointer";
     } else {
       points = [];
+      selectedShapeIds.clear();
       selectedIndex = 0;
       selectedIndices.clear();
       objectSelected = false;
@@ -2210,14 +2353,19 @@ function initializeEditor() {
     const previousState = captureUndoState();
     const wasSelected = shapes[activeShapeIndex]?.id === shapeId;
     shapes = moveShapeToLayer(shapes, shapeId, nextLayer);
+    selectedShapeIds.delete(shapeId);
     if (wasSelected) {
-      activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+      const remainingSelectedIndexes = selectedShapeIndexes();
+      activeShapeIndex = remainingSelectedIndexes.at(-1) ?? frontmostShapeIndexInLayer(activeLayer);
       points = activeShapeIndex >= 0 ? shapes[activeShapeIndex].points : [];
       selectedIndex = 0;
       selectedIndices = activeShapeIndex >= 0
         ? new Set(points.map((_, index) => index))
         : new Set();
-      objectSelected = activeShapeIndex >= 0 && activeTool === "pointer";
+      if (activeShapeIndex >= 0 && activeTool === "pointer" && !selectedShapeIds.size) {
+        selectedShapeIds.add(shapes[activeShapeIndex].id);
+      }
+      objectSelected = selectedShapeIds.size > 0 && activeTool === "pointer";
     } else if (activeShapeIndex >= 0) {
       const selectedId = previousState.shapes[previousState.activeShapeIndex]?.id;
       activeShapeIndex = shapes.findIndex((shape) => shape.id === selectedId);
@@ -2227,6 +2375,7 @@ function initializeEditor() {
       points = shapes[activeShapeIndex].points;
       selectedIndex = 0;
       selectedIndices = new Set(points.map((_, index) => index));
+      selectedShapeIds = new Set([shapeId]);
       objectSelected = activeTool === "pointer";
     }
     recordUndoState(previousState);
@@ -2247,9 +2396,25 @@ function initializeEditor() {
       }
       objectSelected = activeShapeIndex >= 0;
       if (objectSelected) {
+        const editableSelectedIds = new Set(
+          shapes
+            .filter(
+              (shape) =>
+                normalizeLayer(shape.layer) === activeLayer && selectedShapeIds.has(shape.id),
+            )
+            .map((shape) => shape.id),
+        );
+        selectedShapeIds = tool === "pointer" && editableSelectedIds.size
+          ? editableSelectedIds
+          : new Set([shapes[activeShapeIndex].id]);
+        if (!selectedShapeIds.has(shapes[activeShapeIndex].id)) {
+          activeShapeIndex = selectedShapeIndexes().at(-1);
+          points = shapes[activeShapeIndex].points;
+        }
         selectedIndices = new Set(points.map((_, index) => index));
         selectedIndex = 0;
       } else {
+        selectedShapeIds.clear();
         selectedIndices.clear();
       }
     }
@@ -2282,23 +2447,42 @@ function initializeEditor() {
   }
 
   function duplicateShapeForDrag(dragState) {
-    const sourceShape = shapes[activeShapeIndex];
-    if (!sourceShape) return;
+    const sourceIds = dragState.startShapes?.map(({ shapeId }) => shapeId) ?? [
+      shapes[activeShapeIndex]?.id,
+    ];
+    const activeShapeId = shapes[activeShapeIndex]?.id;
+    const copiedIds = [];
+    let copiedActiveId = null;
 
-    const copiedShape = duplicateShape(sourceShape, nextShapeId);
-    shapes.push(copiedShape);
-    nextShapeId += 1;
-    activeShapeIndex = shapes.length - 1;
-    points = copiedShape.points;
+    sourceIds.forEach((shapeId) => {
+      const sourceShape = shapes.find((shape) => shape.id === shapeId);
+      if (!sourceShape) return;
+      const copiedShape = duplicateShape(sourceShape, nextShapeId);
+      shapes.push(copiedShape);
+      copiedIds.push(copiedShape.id);
+      if (shapeId === activeShapeId) copiedActiveId = copiedShape.id;
+      nextShapeId += 1;
+    });
+    if (!copiedIds.length) return;
+
+    selectedShapeIds = new Set(copiedIds);
+    activeShapeIndex = shapes.findIndex(
+      (shape) => shape.id === (copiedActiveId ?? copiedIds.at(-1)),
+    );
+    points = shapes[activeShapeIndex].points;
     selectedIndex = 0;
     selectedIndices = new Set(points.map((_, index) => index));
     objectSelected = true;
-    dragState.startPositions = points.map((point, index) => ({
-      index,
-      x: point.x,
-      y: point.y,
+    dragState.startShapes = selectedShapeIndexes().map((index) => ({
+      shapeId: shapes[index].id,
+      positions: shapes[index].points.map((point, pointIndex) => ({
+        index: pointIndex,
+        x: point.x,
+        y: point.y,
+      })),
     }));
     dragState.duplicated = true;
+    dragState.duplicatedCount = copiedIds.length;
   }
 
   function applyObjectTransform(nextPoints, message) {
@@ -2365,6 +2549,19 @@ function initializeEditor() {
 
     const pointer = pointFromPointer(event);
     if (!pointer) return;
+
+    if (dragging.kind === "marquee") {
+      const screenDistance = Math.hypot(
+        event.clientX - dragging.startClient.x,
+        event.clientY - dragging.startClient.y,
+      );
+      if (!dragging.moved && screenDistance < 3) return;
+      dragging.moved = true;
+      dragging.currentPointer = pointer;
+      canvasHint.hidden = true;
+      render();
+      return;
+    }
 
     if (["rectangle", "ellipse", "line"].includes(dragging.kind)) {
       dragging.moved =
@@ -2499,6 +2696,26 @@ function initializeEditor() {
       dragging.moved = true;
       const requestedX = pointer.x - dragging.startPointer.x;
       const requestedY = pointer.y - dragging.startPointer.y;
+      if (dragging.kind === "shape" && dragging.startShapes) {
+        const allPositions = dragging.startShapes.flatMap(({ positions }) => positions);
+        const translation = constrainTranslation(
+          allPositions,
+          requestedX,
+          requestedY,
+        );
+        dragging.startShapes.forEach(({ shapeId, positions }) => {
+          const shape = shapes.find((candidate) => candidate.id === shapeId);
+          if (!shape) return;
+          positions.forEach((position) => {
+            shape.points[position.index].x = roundValue(position.x + translation.x);
+            shape.points[position.index].y = roundValue(position.y + translation.y);
+          });
+        });
+        points = shapes[activeShapeIndex].points;
+        canvasHint.hidden = true;
+        render();
+        return;
+      }
       const translation = constrainTranslation(
         dragging.startPositions,
         requestedX,
@@ -2547,6 +2764,7 @@ function initializeEditor() {
     nextShapeId += 1;
     activeShapeIndex = shapes.length - 1;
     points = shapes[activeShapeIndex].points;
+    selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
     selectedIndex = 0;
     selectedIndices = new Set(points.map((_, index) => index));
     recordUndoState(previousState);
@@ -2671,8 +2889,9 @@ function initializeEditor() {
     const previousState = captureUndoState();
     const activeShapeId = shapes[activeShapeIndex]?.id;
     const [deletedShape] = shapes.splice(deletedIndex, 1);
+    selectedShapeIds.delete(shapeId);
     if (activeShapeId === shapeId) {
-      activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+      activeShapeIndex = selectedShapeIndexes().at(-1) ?? frontmostShapeIndexInLayer(activeLayer);
     } else {
       activeShapeIndex = shapes.findIndex((shape) => shape.id === activeShapeId);
     }
@@ -2680,9 +2899,14 @@ function initializeEditor() {
       points = shapes[activeShapeIndex].points;
       selectedIndex = 0;
       selectedIndices = new Set(points.map((_, index) => index));
-      objectSelected = ["pointer", "rotate"].includes(activeTool);
+      if (["pointer", "rotate"].includes(activeTool) && !selectedShapeIds.size) {
+        selectedShapeIds.add(shapes[activeShapeIndex].id);
+      }
+      objectSelected =
+        ["pointer", "rotate"].includes(activeTool) && selectedShapeIds.size > 0;
     } else {
       points = [];
+      selectedShapeIds.clear();
       selectedIndex = 0;
       selectedIndices.clear();
       objectSelected = false;
@@ -2698,7 +2922,37 @@ function initializeEditor() {
       announce("Select an object to delete");
       return;
     }
-    deleteObjectById(shapes[activeShapeIndex].id);
+    const idsToDelete = new Set(selectedShapeIds);
+    if (!idsToDelete.size) idsToDelete.add(shapes[activeShapeIndex].id);
+    const deletedShapes = shapes.filter(
+      (shape) =>
+        normalizeLayer(shape.layer) === activeLayer && idsToDelete.has(shape.id),
+    );
+    if (!deletedShapes.length) return;
+
+    const previousState = captureUndoState();
+    shapes = shapes.filter((shape) => !idsToDelete.has(shape.id));
+    selectedShapeIds.clear();
+    activeShapeIndex = frontmostShapeIndexInLayer(activeLayer);
+    if (activeShapeIndex >= 0) {
+      points = shapes[activeShapeIndex].points;
+      selectedShapeIds.add(shapes[activeShapeIndex].id);
+      selectedIndex = 0;
+      selectedIndices = new Set(points.map((_, index) => index));
+      objectSelected = true;
+    } else {
+      points = [];
+      selectedIndex = 0;
+      selectedIndices.clear();
+      objectSelected = false;
+    }
+    recordUndoState(previousState);
+    render();
+    announce(
+      deletedShapes.length === 1
+        ? `Deleted ${deletedShapes[0].name}`
+        : `Deleted ${deletedShapes.length} objects`,
+    );
   }
 
   function deleteCurrentSelection() {
@@ -2742,16 +2996,26 @@ function initializeEditor() {
   function nudgeActiveObject(horizontalChange, verticalChange) {
     if (!objectSelected || !points.length) return;
     const previousState = captureUndoState();
-    const positions = points.map((point, index) => ({
-      index,
-      x: point.x,
-      y: point.y,
+    const selections = selectedShapeIndexes().map((index) => ({
+      shape: shapes[index],
+      positions: shapes[index].points.map((point, pointIndex) => ({
+        index: pointIndex,
+        x: point.x,
+        y: point.y,
+      })),
     }));
-    const translation = constrainTranslation(positions, horizontalChange, verticalChange);
-    positions.forEach((position) => {
-      points[position.index].x = roundValue(position.x + translation.x);
-      points[position.index].y = roundValue(position.y + translation.y);
+    const translation = constrainTranslation(
+      selections.flatMap(({ positions }) => positions),
+      horizontalChange,
+      verticalChange,
+    );
+    selections.forEach(({ shape, positions }) => {
+      positions.forEach((position) => {
+        shape.points[position.index].x = roundValue(position.x + translation.x);
+        shape.points[position.index].y = roundValue(position.y + translation.y);
+      });
     });
+    points = shapes[activeShapeIndex].points;
     recordUndoState(previousState);
     render();
   }
@@ -2789,10 +3053,37 @@ function initializeEditor() {
   }
 
   svg.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
+    if (![0, 2].includes(event.button)) return;
 
     const pointer = pointFromPointer(event);
     if (!pointer) return;
+    event.preventDefault();
+
+    if (event.button === 2) {
+      const rect = svg.getBoundingClientRect();
+      const viewBox = createZoomViewBox(
+        zoom,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        viewCenter.x,
+        viewCenter.y,
+      );
+      dragging = {
+        kind: "pan",
+        button: 2,
+        moved: false,
+        startClient: { x: event.clientX, y: event.clientY },
+        startCenter: { ...viewCenter },
+        unitsPerPixel: {
+          x: viewBox.width / rect.width,
+          y: viewBox.height / rect.height,
+        },
+      };
+      canvasHint.hidden = true;
+      svg.setPointerCapture(event.pointerId);
+      render();
+      return;
+    }
 
     const handle = activeTool === "node" ? event.target.closest?.("[data-handle]") : null;
     const node = activeTool === "node" ? event.target.closest?.("[data-node-index]") : null;
@@ -2806,7 +3097,6 @@ function initializeEditor() {
         : null;
     const segment = event.target.closest?.("[data-segment-index]");
     const shapeElement = event.target.closest?.("[data-shape-index]");
-    event.preventDefault();
 
     if (["rectangle", "circle", "line"].includes(activeTool)) {
       const drawingKind = activeTool === "circle" ? "ellipse" : activeTool;
@@ -2833,6 +3123,7 @@ function initializeEditor() {
         activeShapeIndex = Number(shapeElement.dataset.shapeIndex);
         points = shapes[activeShapeIndex].points;
       }
+      selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
       objectSelected = true;
       selectedIndex = 0;
       selectedIndices = new Set(points.map((_, index) => index));
@@ -2893,6 +3184,12 @@ function initializeEditor() {
       const shapeIndex = shapeElement
         ? Number(shapeElement.dataset.shapeIndex)
         : activeShapeIndex;
+      if (
+        activeTool === "pointer" &&
+        !selectedShapeIds.has(shapes[shapeIndex].id)
+      ) {
+        selectedShapeIds = new Set([shapes[shapeIndex].id]);
+      }
       if (shapeIndex !== activeShapeIndex) {
         activeShapeIndex = shapeIndex;
         points = shapes[activeShapeIndex].points;
@@ -2914,28 +3211,50 @@ function initializeEditor() {
           x: points[index].x,
           y: points[index].y,
         })),
+        startShapes: activeTool === "pointer"
+          ? selectedShapeIndexes().map((index) => ({
+              shapeId: shapes[index].id,
+              positions: shapes[index].points.map((point, pointIndex) => ({
+                index: pointIndex,
+                x: point.x,
+                y: point.y,
+              })),
+            }))
+          : null,
         duplicateOnDrag: activeTool === "pointer" && event.altKey,
         undoState: captureUndoState(),
       };
     } else {
-      const rect = svg.getBoundingClientRect();
-      const viewBox = createZoomViewBox(
-        zoom,
-        CANVAS_WIDTH,
-        CANVAS_HEIGHT,
-        viewCenter.x,
-        viewCenter.y,
-      );
-      dragging = {
-        kind: "pan",
-        moved: false,
-        startClient: { x: event.clientX, y: event.clientY },
-        startCenter: { ...viewCenter },
-        unitsPerPixel: {
-          x: viewBox.width / rect.width,
-          y: viewBox.height / rect.height,
-        },
-      };
+      if (activeTool === "pointer") {
+        dragging = {
+          kind: "marquee",
+          moved: false,
+          additive: event.shiftKey,
+          startPointer: pointer,
+          currentPointer: pointer,
+          startClient: { x: event.clientX, y: event.clientY },
+        };
+      } else {
+        const rect = svg.getBoundingClientRect();
+        const viewBox = createZoomViewBox(
+          zoom,
+          CANVAS_WIDTH,
+          CANVAS_HEIGHT,
+          viewCenter.x,
+          viewCenter.y,
+        );
+        dragging = {
+          kind: "pan",
+          button: 0,
+          moved: false,
+          startClient: { x: event.clientX, y: event.clientY },
+          startCenter: { ...viewCenter },
+          unitsPerPixel: {
+            x: viewBox.width / rect.width,
+            y: viewBox.height / rect.height,
+          },
+        };
+      }
       render();
     }
 
@@ -2944,6 +3263,10 @@ function initializeEditor() {
   });
 
   svg.addEventListener("pointermove", updateDrag);
+
+  svg.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
 
   svg.addEventListener("pointerup", (event) => {
     if (!dragging) return;
@@ -2973,10 +3296,34 @@ function initializeEditor() {
       return;
     }
 
+    if (completedDrag.kind === "marquee") {
+      if (!completedDrag.moved) {
+        applyShapeSelection([], { announceChange: objectSelected });
+        return;
+      }
+      const selectionBounds = createSelectionBounds(
+        completedDrag.startPointer,
+        endPointer ?? completedDrag.currentPointer,
+      );
+      applyShapeSelection(
+        shapeIndicesInSelection(shapes, selectionBounds, activeLayer),
+        {
+          additive: completedDrag.additive,
+          announceChange: true,
+        },
+      );
+      return;
+    }
+
     if (completedDrag.kind === "pan" && !completedDrag.moved) {
+      if (completedDrag.button === 2) {
+        render();
+        return;
+      }
       if (["pointer", "rotate"].includes(activeTool)) {
         const hadSelection = objectSelected;
         objectSelected = false;
+        selectedShapeIds.clear();
         selectedIndices.clear();
         render();
         if (hadSelection) announce("Object selection cleared");
@@ -3018,7 +3365,11 @@ function initializeEditor() {
       : false;
     render();
     if (completedDrag.duplicated && changed) {
-      announce(`Duplicated ${shapes[activeShapeIndex].name}`);
+      announce(
+        completedDrag.duplicatedCount > 1
+          ? `Duplicated ${completedDrag.duplicatedCount} objects`
+          : `Duplicated ${shapes[activeShapeIndex].name}`,
+      );
     } else if (completedDrag.kind === "rotate" && changed) {
       const angle = completedDrag.rotationDegrees ?? 0;
       const direction = angle >= 0 ? "clockwise" : "counterclockwise";
@@ -3182,6 +3533,7 @@ function initializeEditor() {
     activeShapeIndex = 0;
     activeLayer = DEFAULT_LAYER;
     points = shapes[activeShapeIndex].points;
+    selectedShapeIds = new Set([shapes[activeShapeIndex].id]);
     nextShapeId = 2;
     selectedIndex = 0;
     selectedIndices = new Set([0]);
@@ -3260,6 +3612,7 @@ const VectorEditorCore = {
   LAYER_COUNT,
   MINIMUM_SHAPE_SIZE,
   absoluteHandle,
+  boundsIntersect,
   calculateWheelPan,
   calculateShapeBounds,
   clonePoints,
@@ -3274,6 +3627,7 @@ const VectorEditorCore = {
   createLinePoints,
   createPathData,
   createRectanglePoints,
+  createSelectionBounds,
   createSegmentPathData,
   createZoomViewBox,
   cubicPointAt,
@@ -3299,6 +3653,7 @@ const VectorEditorCore = {
   scalePointsToBounds,
   setPointType,
   shapeRenderOrder,
+  shapeIndicesInSelection,
   splitSegment,
   updatePointHandle,
 };

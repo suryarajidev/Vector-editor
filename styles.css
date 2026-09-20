@@ -1097,6 +1097,10 @@ a:focus-visible {
   cursor: grabbing;
 }
 
+#editor-canvas.is-selecting {
+  cursor: crosshair;
+}
+
 #canvas-background {
   pointer-events: none;
 }
@@ -1119,6 +1123,15 @@ a:focus-visible {
 .draft-shape {
   fill-opacity: 0.28;
   stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.selection-marquee {
+  fill: rgb(0 174 218 / 14%);
+  stroke: #00aeda;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }

@@ -7,6 +7,7 @@ const {
   INITIAL_POINTS,
   LAYER_COUNT,
   MINIMUM_SHAPE_SIZE,
+  boundsIntersect,
   calculateShapeBounds,
   calculateWheelPan,
   clonePoints,
@@ -21,6 +22,7 @@ const {
   createLinePoints,
   createPathData,
   createRectanglePoints,
+  createSelectionBounds,
   createZoomViewBox,
   cubicPointAt,
   duplicateShape,
@@ -41,6 +43,7 @@ const {
   scalePointsToBounds,
   setPointType,
   shapeRenderOrder,
+  shapeIndicesInSelection,
   splitSegment,
   updatePointHandle,
 } = require("../app.js");
@@ -53,6 +56,28 @@ assert.equal(DEFAULT_OUTLINE_WIDTH, 8);
 assert.equal(DEFAULT_LAYER, 1);
 assert.equal(LAYER_COUNT, 5);
 assert.equal(MINIMUM_SHAPE_SIZE, 2);
+assert.deepEqual(createSelectionBounds({ x: 90, y: 80 }, { x: 10, y: 20 }), {
+  left: 10,
+  top: 20,
+  right: 90,
+  bottom: 80,
+  width: 80,
+  height: 60,
+});
+assert.equal(
+  boundsIntersect(
+    { left: 0, top: 0, right: 20, bottom: 20 },
+    { left: 20, top: 10, right: 30, bottom: 30 },
+  ),
+  true,
+);
+assert.equal(
+  boundsIntersect(
+    { left: 0, top: 0, right: 20, bottom: 20 },
+    { left: 21, top: 10, right: 30, bottom: 30 },
+  ),
+  false,
+);
 assert.equal(normalizeOutlineWidth("12.5"), 12.5);
 assert.equal(normalizeOutlineWidth(150), 100);
 assert.equal(normalizeOutlineWidth("not-a-number"), 8);
@@ -335,6 +360,27 @@ assert.deepEqual(calculateShapeBounds(rectangle), {
   width: 80,
   height: 40,
 });
+const marqueeShapes = [
+  { id: 1, layer: 1, points: rectangle },
+  { id: 2, layer: 1, points: createRectanglePoints({ x: 250, y: 200 }, { x: 320, y: 280 }) },
+  { id: 3, layer: 2, points: rectangle },
+];
+assert.deepEqual(
+  shapeIndicesInSelection(
+    marqueeShapes,
+    createSelectionBounds({ x: 90, y: 90 }, { x: 260, y: 210 }),
+    1,
+  ),
+  [0, 1],
+);
+assert.deepEqual(
+  shapeIndicesInSelection(
+    marqueeShapes,
+    createSelectionBounds({ x: 90, y: 90 }, { x: 200, y: 160 }),
+    2,
+  ),
+  [2],
+);
 const stretchedRectangle = resizeShapePoints(rectangle, "e", { x: 260, y: 120 });
 assert.deepEqual(calculateShapeBounds(stretchedRectangle), {
   left: 100,
