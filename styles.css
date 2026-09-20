@@ -805,6 +805,10 @@ a:focus-visible {
   border-radius: 8px;
 }
 
+.tool-button[hidden] {
+  display: none;
+}
+
 .tool-button:hover {
   color: #eefaff;
   background: #252a33;

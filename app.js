@@ -1462,6 +1462,7 @@ function initializeEditor() {
     const isCircleTool = activeTool === "circle";
     const isLineTool = activeTool === "line";
     const isDrawingTool = isRectangleTool || isCircleTool || isLineTool;
+    addNodeButton.hidden = !isNodeTool;
     editorLayout.classList.toggle("pointer-mode", !isNodeTool);
     inspector.setAttribute("aria-hidden", String(!isNodeTool));
     nodeActions.hidden = isDrawingTool;
