@@ -8,6 +8,8 @@ const {
   constrainTranslation,
   createArtworkSvg,
   createDocumentSvg,
+  createGradientEndColor,
+  createGradientMarkup,
   createPathData,
   createRectanglePoints,
   createZoomViewBox,
@@ -16,6 +18,7 @@ const {
   hexToHsb,
   hsbToHex,
   midpoint,
+  normalizeFill,
   normalizeHexColor,
   setPointType,
   splitSegment,
@@ -24,7 +27,7 @@ const {
 
 const points = clonePoints(INITIAL_POINTS);
 
-assert.equal(DEFAULT_FILL_COLOR, "#eb8e0b");
+assert.equal(DEFAULT_FILL_COLOR, "#052d5c");
 
 assert.equal(points.length, 7);
 assert.notEqual(points, INITIAL_POINTS);
@@ -139,7 +142,7 @@ assert.match(svg, /<title id="title">Node-edited vector shape<\/title>/);
 assert.match(svg, /vector-effect="non-scaling-stroke"/);
 assert.match(svg, / C /);
 assert.match(svg, new RegExp(`d="${createPathData(points)}"`));
-assert.match(svg, /fill="#eb8e0b"/);
+assert.match(svg, /fill="#052d5c"/);
 assert.equal((svg.match(/<linearGradient/g) ?? []).length, 0);
 
 assert.equal(normalizeHexColor("a329d6"), "#a329d6");
@@ -151,6 +154,21 @@ const purpleHsb = hexToHsb("#a329d6");
 assert.equal(
   hsbToHex(purpleHsb.color, purpleHsb.saturation, purpleHsb.brightness),
   "#a329d6",
+);
+assert.deepEqual(normalizeFill(), {
+  type: "solid",
+  colors: ["#052d5c", createGradientEndColor("#052d5c")],
+});
+assert.deepEqual(normalizeFill({ type: "vertical", colors: ["#A329D6", "#12B5A6"] }), {
+  type: "vertical",
+  colors: ["#a329d6", "#12b5a6"],
+});
+assert.match(
+  createGradientMarkup(
+    { type: "radial", colors: ["#052d5c", "#12b5a6"] },
+    "testGradient",
+  ),
+  /<radialGradient id="testGradient"/,
 );
 
 const rectangle = createRectanglePoints({ x: 100, y: 100 }, { x: 180, y: 140 });
@@ -206,6 +224,18 @@ assert.match(
   createDocumentSvg([{ points, color: "#a329d6" }]),
   /fill="#a329d6"/,
 );
+const gradientSvg = createDocumentSvg([
+  { points, fill: { type: "horizontal", colors: ["#052d5c", "#12b5a6"] } },
+  { points: rectangle, fill: { type: "vertical", colors: ["#a329d6", "#ffcc00"] } },
+  { points, fill: { type: "radial", colors: ["#ffffff", "#052d5c"] } },
+]);
+assert.equal((gradientSvg.match(/<linearGradient/g) ?? []).length, 2);
+assert.equal((gradientSvg.match(/<radialGradient/g) ?? []).length, 1);
+assert.match(gradientSvg, /x1="0%" y1="0%" x2="100%" y2="0%"/);
+assert.match(gradientSvg, /x1="0%" y1="0%" x2="0%" y2="100%"/);
+assert.match(gradientSvg, /<radialGradient id="shapeFill2" cx="50%" cy="50%" r="70%">/);
+assert.match(gradientSvg, /fill="url\(#shapeFill0\)"/);
+assert.match(gradientSvg, /stop-color="#12b5a6"/);
 
 assert.deepEqual(createZoomViewBox(1), { x: 0, y: 0, width: 640, height: 420 });
 assert.deepEqual(createZoomViewBox(2), { x: 160, y: 105, width: 320, height: 210 });

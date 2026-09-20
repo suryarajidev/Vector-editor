@@ -395,7 +395,7 @@ a:focus-visible {
 .fill-color-swatch,
 .color-preview {
   display: block;
-  background: #eb8e0b;
+  background: #052d5c;
   border: 2px solid rgb(255 255 255 / 75%);
   box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
 }
@@ -414,7 +414,7 @@ a:focus-visible {
   top: calc(100% + 10px);
   left: 0;
   display: grid;
-  width: 276px;
+  width: 296px;
   gap: 15px;
   padding: 16px;
   color: #eef7fb;
@@ -439,6 +439,93 @@ a:focus-visible {
   width: 31px;
   height: 31px;
   border-radius: 8px;
+}
+
+.fill-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.fill-type-grid button {
+  min-height: 33px;
+  padding: 6px 8px;
+  color: #b8c5d1;
+  font-size: 0.68rem;
+  font-weight: 720;
+  background: #1b1f26;
+  border: 1px solid #3a424e;
+  border-radius: 7px;
+}
+
+.fill-type-grid button:hover {
+  color: #f1f9fc;
+  border-color: #596677;
+}
+
+.fill-type-grid button.is-active {
+  color: #e9fbff;
+  background: #123d49;
+  border-color: #20bfe5;
+  box-shadow: 0 0 0 2px rgb(32 191 229 / 10%);
+}
+
+.gradient-stops {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  background: #1d2229;
+  border: 1px solid #39414d;
+  border-radius: 9px;
+}
+
+.gradient-stops[hidden] {
+  display: none;
+}
+
+.gradient-stops > span {
+  color: #9fabb8;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.gradient-stops > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.gradient-stops button {
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  color: #c4d0db;
+  font-size: 0.68rem;
+  font-weight: 720;
+  background: #282e37;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.gradient-stops button:hover {
+  background: #303741;
+}
+
+.gradient-stops button.is-active {
+  color: #f1fbff;
+  border-color: #20bfe5;
+}
+
+.gradient-stop-swatch {
+  display: block;
+  width: 19px;
+  height: 19px;
+  background: #052d5c;
+  border: 2px solid rgb(255 255 255 / 72%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 42%);
 }
 
 .color-slider-row {

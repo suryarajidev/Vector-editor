@@ -16,7 +16,8 @@ const INITIAL_POINTS = Object.freeze([
 
 const CANVAS_WIDTH = 640;
 const CANVAS_HEIGHT = 420;
-const DEFAULT_FILL_COLOR = "#eb8e0b";
+const DEFAULT_FILL_COLOR = "#052d5c";
+const FILL_TYPES = Object.freeze(["solid", "horizontal", "vertical", "radial"]);
 const ZOOM_LEVELS = Object.freeze([0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3, 4]);
 
 function clonePoints(points) {
@@ -89,6 +90,68 @@ function hsbToHex(color, saturation, brightness) {
   return `#${channels
     .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+function createGradientEndColor(color) {
+  const hsb = hexToHsb(color);
+  return hsbToHex(
+    hsb.color,
+    Math.max(0, hsb.saturation - 12),
+    Math.min(100, hsb.brightness + 35),
+  );
+}
+
+function normalizeFill(fill, legacyColor) {
+  const type = FILL_TYPES.includes(fill?.type) ? fill.type : "solid";
+  const primary =
+    normalizeHexColor(fill?.colors?.[0] ?? fill?.color ?? legacyColor) ?? DEFAULT_FILL_COLOR;
+  const secondary =
+    normalizeHexColor(fill?.colors?.[1]) ?? createGradientEndColor(primary);
+  return { type, colors: [primary, secondary] };
+}
+
+function cloneFill(fill) {
+  const normalized = normalizeFill(fill);
+  return { type: normalized.type, colors: [...normalized.colors] };
+}
+
+function fillPaintValue(fill, gradientId) {
+  const normalized = normalizeFill(fill);
+  return normalized.type === "solid" ? normalized.colors[0] : `url(#${gradientId})`;
+}
+
+function fillCssBackground(fill) {
+  const normalized = normalizeFill(fill);
+  const [start, end] = normalized.colors;
+  const backgrounds = {
+    solid: start,
+    horizontal: `linear-gradient(90deg, ${start}, ${end})`,
+    vertical: `linear-gradient(180deg, ${start}, ${end})`,
+    radial: `radial-gradient(circle, ${start}, ${end})`,
+  };
+  return backgrounds[normalized.type];
+}
+
+function createGradientMarkup(fill, gradientId, indent = "    ") {
+  const normalized = normalizeFill(fill);
+  if (normalized.type === "solid") return "";
+  const [start, end] = normalized.colors;
+
+  if (normalized.type === "radial") {
+    return `${indent}<radialGradient id="${gradientId}" cx="50%" cy="50%" r="70%">
+${indent}  <stop offset="0" stop-color="${start}"/>
+${indent}  <stop offset="1" stop-color="${end}"/>
+${indent}</radialGradient>`;
+  }
+
+  const coordinates =
+    normalized.type === "vertical"
+      ? 'x1="0%" y1="0%" x2="0%" y2="100%"'
+      : 'x1="0%" y1="0%" x2="100%" y2="0%"';
+  return `${indent}<linearGradient id="${gradientId}" ${coordinates}>
+${indent}  <stop offset="0" stop-color="${start}"/>
+${indent}  <stop offset="1" stop-color="${end}"/>
+${indent}</linearGradient>`;
 }
 
 function midpoint(first, second) {
@@ -457,29 +520,39 @@ function updatePointHandle(point, handleName, nextHandle) {
 }
 
 function createDocumentSvg(shapes) {
-  const paths = shapes
+  const normalizedShapes = shapes.map((shape) => ({
+    ...shape,
+    fill: normalizeFill(shape.fill, shape.color),
+  }));
+  const definitions = normalizedShapes
+    .map((shape, index) => createGradientMarkup(shape.fill, `shapeFill${index}`))
+    .filter(Boolean)
+    .join("\n");
+  const paths = normalizedShapes
     .map(
-      (shape) =>
-        `  <path d="${createPathData(shape.points)}" fill="${normalizeHexColor(shape.color) ?? DEFAULT_FILL_COLOR}" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
+      (shape, index) =>
+        `  <path d="${createPathData(shape.points)}" fill="${fillPaintValue(shape.fill, `shapeFill${index}`)}" stroke="#263651" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
     )
     .join("\n");
+  const defs = definitions ? `  <defs>\n${definitions}\n  </defs>\n` : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img" aria-labelledby="title description">
   <title id="title">Node-edited vector shape</title>
   <desc id="description">A closed vector path created in Vector Editor.</desc>
-${paths}
+${defs}${paths}
 </svg>`;
 }
 
 function createArtworkSvg(points) {
-  return createDocumentSvg([{ points, color: DEFAULT_FILL_COLOR }]);
+  return createDocumentSvg([{ points, fill: normalizeFill() }]);
 }
 
 function initializeEditor() {
   const editorLayout = document.querySelector(".editor-layout");
   const inspector = document.querySelector(".inspector");
   const svg = document.querySelector("#editor-canvas");
+  const shapePaintDefs = document.querySelector("#shape-paint-defs");
   const shapeLayer = document.querySelector("#shape-layer");
   const draftLayer = document.querySelector("#draft-layer");
   const segmentHitLayer = document.querySelector("#segment-hit-layer");
@@ -525,13 +598,16 @@ function initializeEditor() {
   const saturationValue = document.querySelector("#saturation-value");
   const brightnessValue = document.querySelector("#brightness-value");
   const hexColorInput = document.querySelector("#hex-color-input");
+  const fillTypeButtons = [...document.querySelectorAll("[data-fill-type]")];
+  const gradientStops = document.querySelector("#gradient-stops");
+  const gradientStopButtons = [...document.querySelectorAll("[data-gradient-stop]")];
 
   let shapes = [
     {
       id: 1,
       name: "Shape 1",
       kind: "path",
-      color: DEFAULT_FILL_COLOR,
+      fill: normalizeFill(),
       points: clonePoints(INITIAL_POINTS),
     },
   ];
@@ -545,7 +621,8 @@ function initializeEditor() {
   let viewCenter = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
   let dragging = null;
   let draftRectangle = null;
-  let currentFillColor = DEFAULT_FILL_COLOR;
+  let currentFill = normalizeFill();
+  let activeColorStop = 0;
   let toastTimeout;
 
   function announce(message) {
@@ -595,6 +672,38 @@ function initializeEditor() {
     return element;
   }
 
+  function createGradientElement(fill, id) {
+    const normalized = normalizeFill(fill);
+    if (normalized.type === "solid") return null;
+    const attributes =
+      normalized.type === "radial"
+        ? { id, cx: "50%", cy: "50%", r: "70%" }
+        : normalized.type === "vertical"
+          ? { id, x1: "0%", y1: "0%", x2: "0%", y2: "100%" }
+          : { id, x1: "0%", y1: "0%", x2: "100%", y2: "0%" };
+    const gradient = createSvgElement(
+      normalized.type === "radial" ? "radialGradient" : "linearGradient",
+      attributes,
+    );
+    gradient.append(
+      createSvgElement("stop", { offset: "0", "stop-color": normalized.colors[0] }),
+      createSvgElement("stop", { offset: "1", "stop-color": normalized.colors[1] }),
+    );
+    return gradient;
+  }
+
+  function renderPaintDefinitions() {
+    shapePaintDefs.replaceChildren();
+    shapes.forEach((shape, index) => {
+      const gradient = createGradientElement(shape.fill, `shape-fill-${index}`);
+      if (gradient) shapePaintDefs.append(gradient);
+    });
+    if (draftRectangle) {
+      const draftGradient = createGradientElement(currentFill, "draft-fill");
+      if (draftGradient) shapePaintDefs.append(draftGradient);
+    }
+  }
+
   function selectShape(index, { selectAll = true } = {}) {
     activeShapeIndex = clamp(index, 0, shapes.length - 1);
     points = shapes[activeShapeIndex].points;
@@ -612,7 +721,7 @@ function initializeEditor() {
       const path = createSvgElement("path", {
         class: `shape-path${index === activeShapeIndex ? " is-active" : ""}`,
         d: createPathData(shape.points),
-        fill: shape.color ?? DEFAULT_FILL_COLOR,
+        fill: fillPaintValue(shape.fill, `shape-fill-${index}`),
         "data-shape-index": String(index),
         filter: index === activeShapeIndex ? "url(#shape-shadow)" : "none",
         "aria-label": shape.name,
@@ -630,7 +739,7 @@ function initializeEditor() {
       createSvgElement("path", {
         class: "draft-shape",
         d: createPathData(draftRectangle.points),
-        fill: shapes[activeShapeIndex]?.color ?? DEFAULT_FILL_COLOR,
+        fill: fillPaintValue(currentFill, "draft-fill"),
       }),
     );
   }
@@ -652,10 +761,17 @@ function initializeEditor() {
       preview.className = "object-preview";
       preview.setAttribute("aria-hidden", "true");
       const previewSvg = createSvgElement("svg", { viewBox: "0 0 640 420" });
+      const previewGradientId = `object-preview-fill-${shape.id}`;
+      const previewGradient = createGradientElement(shape.fill, previewGradientId);
+      if (previewGradient) {
+        const previewDefs = createSvgElement("defs");
+        previewDefs.append(previewGradient);
+        previewSvg.append(previewDefs);
+      }
       previewSvg.append(
         createSvgElement("path", {
           d: createPathData(shape.points),
-          fill: shape.color ?? DEFAULT_FILL_COLOR,
+          fill: fillPaintValue(shape.fill, previewGradientId),
         }),
       );
       preview.append(previewSvg);
@@ -673,7 +789,11 @@ function initializeEditor() {
   }
 
   function updateColorControls() {
-    const hex = normalizeHexColor(shapes[activeShapeIndex]?.color) ?? DEFAULT_FILL_COLOR;
+    const shape = shapes[activeShapeIndex];
+    const fill = normalizeFill(shape.fill, shape.color);
+    shape.fill = fill;
+    if (fill.type === "solid") activeColorStop = 0;
+    const hex = fill.colors[activeColorStop];
     const hsb = hexToHsb(hex);
     const roundedColor = Math.round(hsb.color);
     const roundedSaturation = Math.round(hsb.saturation);
@@ -687,9 +807,22 @@ function initializeEditor() {
     brightnessValue.textContent = String(roundedBrightness);
     hexColorInput.value = hex;
     hexColorInput.setAttribute("aria-invalid", "false");
-    fillColorSwatch.style.backgroundColor = hex;
-    colorPreview.style.backgroundColor = hex;
-    fillColorButton.title = `Change fill color (${hex})`;
+    const background = fillCssBackground(fill);
+    fillColorSwatch.style.background = background;
+    colorPreview.style.background = background;
+    fillColorButton.title = `Change ${fill.type} fill`;
+    fillTypeButtons.forEach((button) => {
+      const isActive = button.dataset.fillType === fill.type;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    gradientStops.hidden = fill.type === "solid";
+    gradientStopButtons.forEach((button, index) => {
+      const isActive = index === activeColorStop;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+      button.querySelector(".gradient-stop-swatch").style.backgroundColor = fill.colors[index];
+    });
     colorPopover.style.setProperty("--picker-hue-color", hsbToHex(hsb.color, 100, 100));
     colorPopover.style.setProperty(
       "--picker-bright-color",
@@ -702,14 +835,42 @@ function initializeEditor() {
     fillColorButton.setAttribute("aria-expanded", String(open));
   }
 
+  function setFillType(type) {
+    if (!FILL_TYPES.includes(type)) return;
+    const fill = normalizeFill(shapes[activeShapeIndex].fill);
+    fill.type = type;
+    shapes[activeShapeIndex].fill = fill;
+    currentFill = cloneFill(fill);
+    if (type === "solid") activeColorStop = 0;
+    render();
+    const messages = {
+      solid: "Solid fill selected",
+      horizontal: "Left-to-right gradient selected",
+      vertical: "Top-to-bottom gradient selected",
+      radial: "Radial gradient selected",
+    };
+    announce(messages[type]);
+  }
+
+  function selectGradientStop(index) {
+    activeColorStop = clamp(index, 0, 1);
+    updateColorControls();
+  }
+
+  function applyColorToActiveStop(hex) {
+    const fill = normalizeFill(shapes[activeShapeIndex].fill);
+    fill.colors[activeColorStop] = hex;
+    shapes[activeShapeIndex].fill = fill;
+    currentFill = cloneFill(fill);
+  }
+
   function applySliderColor() {
     const hex = hsbToHex(
       Number(colorSlider.value),
       Number(saturationSlider.value),
       Number(brightnessSlider.value),
     );
-    shapes[activeShapeIndex].color = hex;
-    currentFillColor = hex;
+    applyColorToActiveStop(hex);
     render();
   }
 
@@ -717,8 +878,7 @@ function initializeEditor() {
     const hex = normalizeHexColor(hexColorInput.value);
     hexColorInput.setAttribute("aria-invalid", String(!hex));
     if (!hex) return false;
-    shapes[activeShapeIndex].color = hex;
-    currentFillColor = hex;
+    applyColorToActiveStop(hex);
     render();
     return true;
   }
@@ -822,6 +982,7 @@ function initializeEditor() {
       "viewBox",
       `${formatNumber(viewBox.x)} ${formatNumber(viewBox.y)} ${formatNumber(viewBox.width)} ${formatNumber(viewBox.height)}`,
     );
+    renderPaintDefinitions();
     renderShapes();
     renderDraftShape();
     renderSegmentHitTargets();
@@ -1050,7 +1211,7 @@ function initializeEditor() {
       id: nextShapeId,
       name: shapeName,
       kind: "rectangle",
-      color: currentFillColor,
+      fill: cloneFill(currentFill),
       points: rectanglePoints,
     });
     nextShapeId += 1;
@@ -1340,6 +1501,14 @@ function initializeEditor() {
   fillColorButton.addEventListener("click", () => {
     setColorPopoverOpen(colorPopover.hidden);
   });
+  fillTypeButtons.forEach((button) => {
+    button.addEventListener("click", () => setFillType(button.dataset.fillType));
+  });
+  gradientStopButtons.forEach((button) => {
+    button.addEventListener("click", () =>
+      selectGradientStop(Number(button.dataset.gradientStop)),
+    );
+  });
   [colorSlider, saturationSlider, brightnessSlider].forEach((slider) => {
     slider.addEventListener("input", applySliderColor);
   });
@@ -1359,7 +1528,7 @@ function initializeEditor() {
         id: 1,
         name: "Shape 1",
         kind: "path",
-        color: DEFAULT_FILL_COLOR,
+        fill: normalizeFill(),
         points: clonePoints(INITIAL_POINTS),
       },
     ];
@@ -1368,6 +1537,8 @@ function initializeEditor() {
     nextShapeId = 2;
     selectedIndex = 0;
     selectedIndices = new Set([0]);
+    currentFill = normalizeFill();
+    activeColorStop = 0;
     draftRectangle = null;
     canvasHint.hidden = false;
     render();
@@ -1408,12 +1579,15 @@ function initializeEditor() {
 
 const VectorEditorCore = {
   DEFAULT_FILL_COLOR,
+  FILL_TYPES,
   INITIAL_POINTS,
   absoluteHandle,
   clonePoints,
   closestPointOnSegment,
   closestTOnCubic,
   constrainTranslation,
+  createGradientEndColor,
+  createGradientMarkup,
   createArtworkSvg,
   createDocumentSvg,
   createPathData,
@@ -1422,9 +1596,13 @@ const VectorEditorCore = {
   createZoomViewBox,
   cubicPointAt,
   findClosestSegment,
+  fillCssBackground,
+  fillPaintValue,
   hexToHsb,
   hsbToHex,
   midpoint,
+  cloneFill,
+  normalizeFill,
   normalizeHexColor,
   setPointType,
   splitSegment,

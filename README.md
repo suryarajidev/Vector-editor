@@ -21,7 +21,8 @@ The prototype currently supports:
 - Holding `Shift` while drawing to constrain a rectangle to a perfect square
 - Selecting created shapes from the Objects rail
 - Setting each shape's fill with Scratch-style Color, Saturation, and Brightness sliders or a synchronized hex code
-- Giving new objects the most recently chosen color, starting with `#eb8e0b` from this feature's parent commit
+- Giving new objects the most recently chosen fill, starting with solid `#052d5c`
+- Creating left-to-right, top-to-bottom, and radial gradients with editable start and end colors
 - Switching nodes between Corner, Curve, and Uneven modes
 - Dragging paired Bézier handles to shape smooth curves
 - Using Uneven curve nodes whose aligned handles keep independent lengths
