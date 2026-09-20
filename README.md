@@ -39,6 +39,7 @@ The prototype currently supports:
 - Right-clicking an object to delete it or move it to another layer
 - Setting each shape's fill with Scratch-style Color, Saturation, and Brightness sliders or a synchronized hex code
 - Setting a separate outline color with the same solid and gradient color controls
+- Picking fill, outline, and individual gradient-stop colors from the screen with the color dropper
 - Adjusting each object's non-scaling outline thickness, starting at white and 8 pixels
 - Giving new objects the most recently chosen fill, starting with solid `#052d5c`
 - Creating left-to-right, top-to-bottom, and radial gradients with editable start and end colors

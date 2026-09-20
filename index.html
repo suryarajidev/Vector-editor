@@ -8,7 +8,7 @@
       content="A lightweight vector editor prototype for editing SVG path nodes."
     />
     <title>Vector Editor — Node prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260920-layers" />
+    <link rel="stylesheet" href="styles.css?v=20260920-color-dropper" />
   </head>
   <body>
     <div class="app-shell">
@@ -122,7 +122,20 @@
                 <div class="color-popover" id="color-popover" role="dialog" aria-label="Fill color" hidden>
                   <div class="color-popover-heading">
                     <strong id="color-popover-title">Fill color</strong>
-                    <span class="color-preview" id="color-preview" aria-hidden="true"></span>
+                    <div class="color-heading-actions">
+                      <button
+                        class="color-dropper-button"
+                        id="color-dropper-button"
+                        type="button"
+                        aria-label="Pick fill color from the screen"
+                        title="Pick color from the screen"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="m14 5 5-3 3 3-3 5M4 20l8-8m-6 4 4 4m-6 0v-4l11-11 4 4L8 20H4Z" />
+                        </svg>
+                      </button>
+                      <span class="color-preview" id="color-preview" aria-hidden="true"></span>
+                    </div>
                   </div>
 
                   <div class="fill-type-grid" id="paint-type-grid" role="group" aria-label="Fill style">
@@ -591,6 +604,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260920-layers"></script>
+    <script src="app.js?v=20260920-color-dropper"></script>
   </body>
 </html>

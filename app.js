@@ -1072,6 +1072,7 @@ function initializeEditor() {
   const outlineWidthInput = document.querySelector("#outline-width-input");
   const colorPopover = document.querySelector("#color-popover");
   const colorPopoverTitle = document.querySelector("#color-popover-title");
+  const colorDropperButton = document.querySelector("#color-dropper-button");
   const colorPreview = document.querySelector("#color-preview");
   const colorSlider = document.querySelector("#color-slider");
   const saturationSlider = document.querySelector("#saturation-slider");
@@ -1617,6 +1618,17 @@ function initializeEditor() {
     const targetLabel = activePaintTarget === "outline" ? "Outline" : "Fill";
     colorPopoverTitle.textContent = `${targetLabel} color`;
     colorPopover.setAttribute("aria-label", `${targetLabel} color`);
+    const supportsEyeDropper = typeof window.EyeDropper === "function";
+    colorDropperButton.classList.toggle("is-unsupported", !supportsEyeDropper);
+    colorDropperButton.setAttribute(
+      "aria-label",
+      supportsEyeDropper
+        ? `Pick ${targetLabel.toLowerCase()} color from the screen`
+        : "Color dropper unavailable in this browser",
+    );
+    colorDropperButton.title = supportsEyeDropper
+      ? `Pick ${targetLabel.toLowerCase()} color from the screen`
+      : "Color dropper unavailable in this browser";
     paintTypeGrid.setAttribute("aria-label", `${targetLabel} style`);
     hexColorInput.setAttribute(
       "aria-label",
@@ -1752,6 +1764,33 @@ function initializeEditor() {
     applyColorToActiveStop(hex);
     render();
     return true;
+  }
+
+  async function pickColorFromScreen() {
+    if (typeof window.EyeDropper !== "function") {
+      announce("The color dropper is not supported by this browser");
+      return;
+    }
+
+    const paintTarget = activePaintTarget;
+    const colorStop = activeColorStop;
+    try {
+      const result = await new window.EyeDropper().open();
+      const hex = normalizeHexColor(result?.sRGBHex);
+      if (!hex) {
+        announce("The color dropper did not return a valid color");
+        return;
+      }
+      activePaintTarget = paintTarget;
+      activeColorStop = colorStop;
+      applyColorToActiveStop(hex);
+      render();
+      announce(`Picked ${hex} for the ${paintTarget}`);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        announce("Could not open the color dropper");
+      }
+    }
   }
 
   function renderSegmentHitTargets() {
@@ -3080,6 +3119,7 @@ function initializeEditor() {
   zoomInButton.addEventListener("click", () => changeZoom(1));
   fillColorButton.addEventListener("click", () => toggleColorPopover("fill"));
   outlineColorButton.addEventListener("click", () => toggleColorPopover("outline"));
+  colorDropperButton.addEventListener("click", pickColorFromScreen);
   rotateCounterclockwise90Button.addEventListener("click", () => rotateActiveShape(-90));
   rotateCounterclockwise45Button.addEventListener("click", () => rotateActiveShape(-45));
   rotateClockwise45Button.addEventListener("click", () => rotateActiveShape(45));
